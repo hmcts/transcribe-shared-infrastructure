@@ -1,0 +1,12 @@
+#!groovy
+
+@Library("Infrastructure@2.5.2")
+
+def branchesToSync = ['demo', 'ithc', 'perftest']
+
+// Infrastructure repos use withInfraPipeline(product) — product only, no `type`
+// and no `component`. Terraform lives at the repository ROOT, not in a
+// subdirectory. Reference: hmcts/pcq-shared-infrastructure.
+withInfraPipeline("transcribe") {
+  syncBranchesWithMaster(branchesToSync)
+}
