@@ -4,3 +4,7 @@
 *.tfplan
 .terraform.lock.hcl
 crash.log
+
+# Terraform working directories
+.terraform/
+.terraform.lock.hcl
