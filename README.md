@@ -43,6 +43,8 @@ Terraform creates these:
 | `AppInsightsConnectionString` | this repo |
 | `azure-storage-account-name` | this repo |
 | `database-connection-string` | `transcribe-api/infrastructure` |
+| `azure-speech-endpoint` | this repo |
+| `azure-speech-resource-id` | this repo |
 
 These have to be seeded manually, because they are credentials for systems
 outside this product's Terraform:
@@ -52,8 +54,6 @@ outside this product's Terraform:
 | `entra-client-id` | MoJ Entra (e-judiciary) app registration |
 | `entra-tenant-id` | " |
 | `entra-client-secret` | " |
-| `azure-speech-key` | See "Azure Speech" below |
-| `azure-speech-endpoint` | " |
 | `azure-openai-api-key` | |
 | `azure-openai-endpoint` | |
 | `gov-notify-api-key` | GOV.UK Notify |
@@ -66,18 +66,30 @@ Seed one with:
 az keyvault secret set --vault-name transcribe-aat --name gov-notify-api-key --value '<value>'
 ```
 
-## Azure Speech is not provisioned here
+## Azure Speech
 
-`azurerm_cognitive_account` does not appear on any CNP Terraform whitelist —
-neither `terraform-infra-approvals/global.json` nor any per-repo file. The
-pipeline halts on unapproved resources, so Speech **cannot** be created from
-this repo as things stand. Two ways forward:
+Built here, by `terraform-module-ai-services` — the platform's approved module
+for cognitive accounts. (A bare `azurerm_cognitive_account` is *not* on any
+whitelist; the module is, globally, so this needs no resource approval. The one
+approval this repo does need is for `azurerm_role_assignment`, used to grant the
+product managed identity data-plane access — see
+`terraform-infra-approvals/transcribe-shared-infrastructure.json` in
+`hmcts/cnp-jenkins-config`.)
 
-1. Raise a PR against `hmcts/cnp-jenkins-config` adding
-   `terraform-infra-approvals/transcribe-shared-infrastructure.json` with
-   `azurerm_cognitive_account`, for `@hmcts/production-apps-approvals`.
-2. Until then, point `azure-speech-key` and `azure-speech-endpoint` at the
-   existing Speech resource and seed them by hand as above.
+**No API keys exist.** The account is created with
+`cognitive_account_local_auth_enabled = false`, so Speech issues no key at all.
+The API authenticates with the product managed identity and mints an
+`aad#<resourceId>#<token>` for the Speech SDK, which is why the vault holds
+`azure-speech-resource-id` and not `azure-speech-key`.
+
+`speech_public_network_access` defaults to **true**, and that is not the end
+state. A private endpoint is the target, but it is not sufficient on its own:
+real-time dictation has the *browser* open a websocket to Speech, so locking the
+account to the VNet also means routing that traffic through the frontend. The
+`Caddyfile` already proxies `/cognitiveservices/*` for exactly this, selected by
+`DIRECT_SDK_ACCESS`. Until that path is proven end to end, closing public access
+would break dictation rather than secure it. Keys stay disabled either way, so a
+reachable endpoint still only accepts Entra tokens.
 
 ## Deploying
 

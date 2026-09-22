@@ -48,3 +48,29 @@ variable "product_group_object_id" {
   description = "AAD group granted access to the vault. Supplied by PlatOps for the product."
   type        = string
 }
+
+variable "speech_account_sku" {
+  description = "SKU for the Speech cognitive account."
+  type        = string
+  default     = "S0"
+}
+
+variable "speech_public_network_access" {
+  description = <<-EOT
+    Whether the Speech account is reachable from the public internet.
+
+    True is not the end state. The target is a private endpoint, as
+    cnp-plum-shared-infrastructure does, but a private endpoint alone is not
+    sufficient here: real-time dictation has the BROWSER talk to Speech over a
+    websocket, so locking the account to the VNet also requires routing that
+    traffic through the frontend (the Caddyfile already proxies
+    /cognitiveservices/* for exactly this, selected by DIRECT_SDK_ACCESS).
+    Until that path is proven end to end, closing this would break dictation
+    rather than secure it.
+
+    API keys are disabled regardless, so a reachable endpoint still only
+    accepts Entra tokens.
+  EOT
+  type        = bool
+  default     = true
+}
