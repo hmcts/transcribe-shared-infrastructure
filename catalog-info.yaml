@@ -1,0 +1,19 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: "transcribe-shared-infrastructure"
+  description: Product-level Azure infrastructure shared by the Transcribe components — Key Vault, Application Insights and storage
+  annotations:
+    jenkins.io/job-full-name: cft:HMCTS_j_to_z/transcribe-shared-infrastructure
+    github.com/project-slug: 'hmcts/transcribe-shared-infrastructure'
+  tags:
+    - terraform
+  links:
+    - url: https://hmcts-reform.slack.com/app_redirect?channel=platops-help
+      title: platops-help on Slack
+      icon: chat
+spec:
+  type: resource
+  system: transcribe
+  lifecycle: experimental
+  owner: group:default/ai-enablement

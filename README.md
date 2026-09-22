@@ -1,56 +1,86 @@
 # transcribe-shared-infrastructure
 
-Product-level (shared) Terraform for the HMCTS Transcribe product on the
-[Cloud Native Platform](https://hmcts.github.io/cloud-native-platform/).
+Product-level Azure infrastructure for the **transcribe** product, deployed by
+the HMCTS CNP common pipeline (`withInfraPipeline`). Terraform lives at the
+repository root, and each long-lived environment has its own branch kept in
+step with `master`.
 
-Target architecture: https://tools.hmcts.net/confluence/pages/viewpage.action?pageId=2004000371
-
-> **Scaffold only.** No Terraform has been written yet. Two questions gate it:
-> whether `transcribe` is an acceptable CNP `product` name, and whether Azure
-> Speech is on the CNP approved-resource whitelist (the pipeline halts on
-> anything unapproved). Both are with PlatOps.
-
-## Scope — what belongs here, and what does not
-
-CNP has three infrastructure tiers. This repository is the middle one.
+This is the middle of the three CNP infrastructure tiers:
 
 | Tier | Owner | Where |
 |---|---|---|
-| Platform-level | PlatOps | Their repos, e.g. `cnp-core-infrastructure` (resource group, VNet, AKS). We raise PRs to add product values via path-to-live. |
-| **Product-level (shared)** | **Us** | **This repo, Terraform at the root** |
-| Component-level | Us | Each component repo's `/infrastructure` |
+| Platform | PlatOps (`cnp-core-infrastructure`) | Resource group, VNet, AKS. Service teams do not provision networking. |
+| **Product** | **this repo** | **Key Vault, Application Insights, storage — anything shared by more than one component.** |
+| Component | `transcribe-api/infrastructure` | Resources belonging to exactly one component, e.g. its Postgres server. |
 
-Only two resources genuinely belong here, because both are read by more than
-one component and so cannot live in either:
+## What this builds
 
-- **Key Vault** (`hmcts-transcribe-kv-{env}`) — CNP's secret injection assumes a
-  product vault; every component reads it via the chart's `keyVaults` block.
-- **Azure Speech account** (`hmcts-transcribe-ai-{env}`) — used by the backend
-  for batch and fast transcription, and to mint the tokens the browser uses for
-  real-time streaming. Quota, model config and cost argue for one account.
+- Resource group `transcribe-shared-infrastructure-<env>`
+- Key Vault **`transcribe-<env>`** — the name is load-bearing, see below
+- Application Insights, plus the `AppInsightsConnectionString` secret
+- Storage account with `audio` and `transcriptions` containers, plus the
+  `azure-storage-account-name` secret
 
-Plus product-level Application Insights and alert rules.
+## The Key Vault name is load-bearing
 
-**Networking is NOT ours.** PlatOms owns the resource group and VNet, so there
-is no VNet here. `pcq-shared-infrastructure` is the model to copy —
-`key-vault.tf`, `storage-account.tf`, `application-insights.tf`, `alerts.tf`,
-and no networking. `darts-shared-infrastructure` does hold networking, but darts
-is a heritage VM migration rather than a normal AKS product.
+Both component charts declare `keyVaults: { transcribe: ... }`. The HMCTS base
+chart expands that to `"<key>-<global.environment>"`, so the vault **must** be
+named `transcribe-<env>`. Renaming it here silently breaks every component
+deployment: the CSI driver cannot find the vault, the volume never mounts, and
+pods stay unready with no obvious error in the application logs.
 
-## Conventions
+## Secrets that must be seeded by hand
 
-- Terraform files at the repository **root**.
-- `{env}.tfvars` for per-environment values.
-- Jenkins injects `env`, `product` and `subscription` — never set them in tfvars.
-- Secrets never in Terraform or Git; retrieve from Key Vault.
-- `.terraform-version` (hyphenated) is the real filename, despite the published
-  docs prose saying `.terraformversion`.
-- Infrastructure repos carry per-environment branches synced from the default
-  branch (`syncBranchesWithMaster`).
+The chart's `keyVaults` block names every secret it wants mounted. **If any one
+of them is missing from the vault, the Secrets Store CSI driver fails the mount
+and the pod never starts** — so seeding these is a hard precondition for the
+first deploy, not a follow-up.
 
-## Related repositories
+Terraform creates these:
 
-| Repository | Purpose |
+| Secret | Created by |
 |---|---|
-| [transcribe-api](https://github.com/hmcts/transcribe-api) | The single backend. Component-scoped Terraform in its own `/infrastructure`. |
-| [transcribe-web](https://github.com/hmcts/transcribe-web) | The merged frontend. Expected to need no bespoke Azure resources. |
+| `AppInsightsConnectionString` | this repo |
+| `azure-storage-account-name` | this repo |
+| `database-connection-string` | `transcribe-api/infrastructure` |
+
+These have to be seeded manually, because they are credentials for systems
+outside this product's Terraform:
+
+| Secret | Notes |
+|---|---|
+| `entra-client-id` | MoJ Entra (e-judiciary) app registration |
+| `entra-tenant-id` | " |
+| `entra-client-secret` | " |
+| `azure-speech-key` | See "Azure Speech" below |
+| `azure-speech-endpoint` | " |
+| `azure-openai-api-key` | |
+| `azure-openai-endpoint` | |
+| `gov-notify-api-key` | GOV.UK Notify |
+| `jwt-secret-key` | Any high-entropy string |
+| `webhook-secret-encryption-key` | Must be a valid Fernet key: 32 random bytes, url-safe base64. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. A plain random string will fail at decrypt time, not at startup. |
+
+Seed one with:
+
+```bash
+az keyvault secret set --vault-name transcribe-aat --name gov-notify-api-key --value '<value>'
+```
+
+## Azure Speech is not provisioned here
+
+`azurerm_cognitive_account` does not appear on any CNP Terraform whitelist —
+neither `terraform-infra-approvals/global.json` nor any per-repo file. The
+pipeline halts on unapproved resources, so Speech **cannot** be created from
+this repo as things stand. Two ways forward:
+
+1. Raise a PR against `hmcts/cnp-jenkins-config` adding
+   `terraform-infra-approvals/transcribe-shared-infrastructure.json` with
+   `azurerm_cognitive_account`, for `@hmcts/production-apps-approvals`.
+2. Until then, point `azure-speech-key` and `azure-speech-endpoint` at the
+   existing Speech resource and seed them by hand as above.
+
+## Deploying
+
+The pipeline runs Terraform per environment; `env`, `product` and
+`subscription` are injected as `-var` at runtime and must never be set in the
+`.tfvars` files.
