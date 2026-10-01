@@ -44,9 +44,24 @@ variable "daily_data_cap_in_gb" {
   default     = 5
 }
 
-variable "product_group_object_id" {
-  description = "AAD group granted access to the vault. Supplied by PlatOps for the product."
+variable "product_group_name" {
+  description = <<-EOT
+    Display name of the AAD group granted administrative access to the vault.
+
+    Empty for now: no AAD group exists for this product yet (there is no
+    "AI Enablement" or "Justice AI" security group in the tenant), and PlatOps
+    create these. Set it as soon as one exists so the team can manage secrets
+    in the portal; until then access is limited to Jenkins, the deployment
+    identity and the workload identity, which is enough to deploy and run.
+  EOT
   type        = string
+  default     = ""
+}
+
+variable "product_group_object_id" {
+  description = "Deprecated object-ID form of product_group_name. Prefer the name."
+  type        = string
+  default     = ""
 }
 
 variable "speech_account_sku" {
