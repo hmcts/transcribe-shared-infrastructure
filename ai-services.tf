@@ -49,7 +49,9 @@ module "speech_services" {
 resource "azurerm_role_assignment" "speech_user" {
   scope                = module.speech_services.cognitive_account_id
   role_definition_name = "Cognitive Services Speech User"
-  principal_id         = module.vault.managed_identity_objectid
+  # one(): the module creates its managed identity with count, so the output is
+  # a one-element tuple rather than a string.
+  principal_id = one(module.vault.managed_identity_objectid)
 }
 
 # Consumed by the API through the chart's keyVaults block. The resource ID is
