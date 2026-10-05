@@ -91,6 +91,30 @@ account to the VNet also means routing that traffic through the frontend. The
 would break dictation rather than secure it. Keys stay disabled either way, so a
 reachable endpoint still only accepts Entra tokens.
 
+## Known issue: the first apply in a new environment fails once
+
+The first `master` build in any environment that has never had this product
+(aat, demo, ithc, perftest, prod) is expected to fail at the first
+`azurerm_key_vault_secret`, with:
+
+```
+... is not authorized to perform action on resource.
+If role assignments, deny assignments or role definitions were changed recently,
+please observe propagation time.
+Assignment: (not found)
+```
+
+That is Azure RBAC propagation, not a permissions bug. The vault uses RBAC
+authorisation (see `vault.tf` for why), so the same apply that creates the
+vault also grants Jenkins `Key Vault Administrator` — and then writes secrets
+before that grant has propagated, which takes a few minutes. **Re-run the
+build.** The vault, App Insights and storage account are already created by
+the failed run, so the second run only adds the secrets and Speech.
+
+The durable fix is a `time_sleep` between the vault and its secrets, but
+`time_sleep` is not on the CNP Terraform whitelist, and a once-per-environment
+re-run did not seem worth another approval round trip.
+
 ## Deploying
 
 The pipeline runs Terraform per environment; `env`, `product` and
