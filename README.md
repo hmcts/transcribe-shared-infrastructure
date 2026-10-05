@@ -91,11 +91,16 @@ account to the VNet also means routing that traffic through the frontend. The
 would break dictation rather than secure it. Keys stay disabled either way, so a
 reachable endpoint still only accepts Entra tokens.
 
-## Known issue: the first apply in a new environment fails once
+## Key Vault secrets are ordered after the vault's role assignments
 
-The first `master` build in any environment that has never had this product
-(aat, demo, ithc, perftest, prod) is expected to fail at the first
-`azurerm_key_vault_secret`, with:
+Every `azurerm_key_vault_secret` here carries `depends_on = [module.vault]`.
+Do not remove it.
+
+The vault uses RBAC authorisation (see `vault.tf` for why), so the module
+grants Jenkins its data-plane role in the same apply that creates the vault. A
+secret only references `key_vault_id`, which Terraform knows the moment the
+vault exists, so without the explicit dependency it writes the secret *in
+parallel with* that role assignment and is refused:
 
 ```
 ... is not authorized to perform action on resource.
@@ -104,16 +109,11 @@ please observe propagation time.
 Assignment: (not found)
 ```
 
-That is Azure RBAC propagation, not a permissions bug. The vault uses RBAC
-authorisation (see `vault.tf` for why), so the same apply that creates the
-vault also grants Jenkins `Key Vault Administrator` — and then writes secrets
-before that grant has propagated, which takes a few minutes. **Re-run the
-build.** The vault, App Insights and storage account are already created by
-the failed run, so the second run only adds the secrets and Speech.
-
-The durable fix is a `time_sleep` between the vault and its secrets, but
-`time_sleep` is not on the CNP Terraform whitelist, and a once-per-environment
-re-run did not seem worth another approval round trip.
+Despite the wording, the first cause was ordering, not propagation — builds #4
+and #5 in aat both failed this way, and the role assignments were still being
+created in #5. Ordering is now fixed. A residual propagation delay right after
+the grant is possible but should be rare; if the very first apply in a new
+environment still hits it, re-run the build.
 
 ## Deploying
 
