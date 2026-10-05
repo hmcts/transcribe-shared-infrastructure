@@ -45,17 +45,18 @@ variable "daily_data_cap_in_gb" {
 }
 
 variable "product_group_name" {
-  description = <<-EOT
-    Display name of the AAD group granted administrative access to the vault.
-
-    Empty for now: no AAD group exists for this product yet (there is no
-    "AI Enablement" or "Justice AI" security group in the tenant), and PlatOps
-    create these. Set it as soon as one exists so the team can manage secrets
-    in the portal; until then access is limited to Jenkins, the deployment
-    identity and the workload identity, which is enough to deploy and run.
-  EOT
+  description = "Display name of the AAD security group granted administrative access to the vault."
   type        = string
   default     = ""
+
+  # The vault uses access policies (see vault.tf), and cnp-module-key-vault
+  # creates the product-team access policy unconditionally. With no group it
+  # would be applied with an empty object_id and fail at apply time with an
+  # opaque error, so fail at plan time with the actual reason instead.
+  validation {
+    condition     = length(var.product_group_name) > 0
+    error_message = "product_group_name is empty. The transcribe product has no AAD security group yet: PlatOps must create one (it also belongs in team-config.yml as azure_ad_group). Set this variable to its display name. See README, 'Key Vault access'."
+  }
 }
 
 variable "product_group_object_id" {
@@ -70,22 +71,8 @@ variable "speech_account_sku" {
   default     = "S0"
 }
 
-variable "speech_public_network_access" {
-  description = <<-EOT
-    Whether the Speech account is reachable from the public internet.
 
-    True is not the end state. The target is a private endpoint, as
-    cnp-plum-shared-infrastructure does, but a private endpoint alone is not
-    sufficient here: real-time dictation has the BROWSER talk to Speech over a
-    websocket, so locking the account to the VNet also requires routing that
-    traffic through the frontend (the Caddyfile already proxies
-    /cognitiveservices/* for exactly this, selected by DIRECT_SDK_ACCESS).
-    Until that path is proven end to end, closing this would break dictation
-    rather than secure it.
+# Injected by the pipeline (TF_VAR_mgmt_subscription_id / TF_VAR_aks_subscription_id).
+variable "mgmt_subscription_id" {}
 
-    API keys are disabled regardless, so a reachable endpoint still only
-    accepts Entra tokens.
-  EOT
-  type        = bool
-  default     = true
-}
+variable "aks_subscription_id" {}

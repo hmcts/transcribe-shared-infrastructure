@@ -10,17 +10,17 @@ module "vault" {
   product_group_name      = var.product_group_name
   common_tags             = local.tags
 
-  # Azure RBAC rather than access policies.
+  # Access policies, NOT Azure RBAC — do not switch this on.
   #
-  # Not a stylistic choice: in access-policy mode the module unconditionally
-  # creates product_team_access_policy, and with no product AAD group to point
-  # it at, that resource is built with an empty object_id and apply fails. In
-  # RBAC mode the equivalent role assignment is skipped when the group is
-  # empty, while every identity that actually needs the vault still gets a
-  # role — Jenkins and the deployment identity as Key Vault Administrator, and
-  # the workload identity this module creates as Key Vault Secrets User, which
-  # is what the CSI driver uses to mount secrets into the pods.
-  enable_rbac_authorization = true
+  # RBAC mode was tried and cannot work on CNP. It needs the module to grant
+  # Jenkins "Key Vault Administrator", and the Jenkins identity's role-assignment
+  # permission carries an ABAC condition that forbids granting that role:
+  # "has an authorization with ABAC condition that is not fulfilled to perform
+  # action 'Microsoft.Authorization/roleAssignments/write'" (build #6). Every
+  # secret write then failed with "Assignment: (not found)" (builds #4-#6).
+  # Access policies need no role assignments, which is why every CNP product
+  # uses them.
+  enable_rbac_authorization = false
 
   managed_identity_object_id           = var.managed_identity_object_id
   create_managed_identity              = true

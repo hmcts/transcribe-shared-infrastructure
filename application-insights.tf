@@ -24,11 +24,10 @@ resource "azurerm_key_vault_secret" "app_insights_connection_string" {
   value        = module.application_insights.connection_string
   key_vault_id = module.vault.key_vault_id
 
-  # Wait for the whole vault module, not just the vault. The vault uses RBAC,
-  # and the module grants Jenkins its data-plane role in the same apply. A
-  # secret only references key_vault_id, which Terraform knows as soon as the
-  # vault exists — so without this it writes the secret IN PARALLEL with the
-  # role assignment and is refused with "Assignment: (not found)". That is what
-  # failed builds #4 and #5.
+  # Wait for the whole vault module, not just the vault. Jenkins' permission
+  # to write secrets is granted by a separate resource inside the module (an
+  # access policy). A secret only references key_vault_id, which Terraform
+  # knows as soon as the vault exists, so without this it writes the secret in
+  # parallel with that grant and is refused.
   depends_on = [module.vault]
 }

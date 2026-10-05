@@ -37,10 +37,19 @@ module "speech_services" {
   # No API keys, ever.
   cognitive_account_local_auth_enabled = false
 
-  # Reachability is a per-environment decision, not a constant — see the
-  # variable's description for why this cannot simply be locked down yet.
-  public_network_access_cognitive               = var.speech_public_network_access
-  cognitive_account_network_acls_default_action = var.speech_public_network_access ? "Allow" : "Deny"
+  # Mandated by Azure Policy, not a preference. hmcts/azure-policy's
+  # allowed_ai_resources policy requires every Cognitive Services account to have
+  # public network access disabled, network ACLs denying by default, outbound
+  # access restricted, local auth disabled and a UK South location. Build #6 was
+  # refused with RequestDisallowedByPolicy while this was public.
+  #
+  # Consequence: the account is reachable only through a private endpoint, which
+  # is PlatOps-owned networking and is not created here (cnp-plum-shared-
+  # infrastructure is the same: "attached later by a separate process"). Until
+  # it exists, nothing can call Speech — see the README.
+  public_network_access_cognitive                      = false
+  cognitive_account_network_acls_default_action        = "Deny"
+  cognitive_account_outbound_network_access_restricted = true
 }
 
 # Data-plane access for the product's managed identity, which is the identity
@@ -62,12 +71,11 @@ resource "azurerm_key_vault_secret" "speech_endpoint" {
   value        = one(module.speech_services.cognitive_account_endpoint)
   key_vault_id = module.vault.key_vault_id
 
-  # Wait for the whole vault module, not just the vault. The vault uses RBAC,
-  # and the module grants Jenkins its data-plane role in the same apply. A
-  # secret only references key_vault_id, which Terraform knows as soon as the
-  # vault exists — so without this it writes the secret IN PARALLEL with the
-  # role assignment and is refused with "Assignment: (not found)". That is what
-  # failed builds #4 and #5.
+  # Wait for the whole vault module, not just the vault. Jenkins' permission
+  # to write secrets is granted by a separate resource inside the module (an
+  # access policy). A secret only references key_vault_id, which Terraform
+  # knows as soon as the vault exists, so without this it writes the secret in
+  # parallel with that grant and is refused.
   depends_on = [module.vault]
 }
 
@@ -76,12 +84,11 @@ resource "azurerm_key_vault_secret" "speech_resource_id" {
   value        = module.speech_services.cognitive_account_id
   key_vault_id = module.vault.key_vault_id
 
-  # Wait for the whole vault module, not just the vault. The vault uses RBAC,
-  # and the module grants Jenkins its data-plane role in the same apply. A
-  # secret only references key_vault_id, which Terraform knows as soon as the
-  # vault exists — so without this it writes the secret IN PARALLEL with the
-  # role assignment and is refused with "Assignment: (not found)". That is what
-  # failed builds #4 and #5.
+  # Wait for the whole vault module, not just the vault. Jenkins' permission
+  # to write secrets is granted by a separate resource inside the module (an
+  # access policy). A secret only references key_vault_id, which Terraform
+  # knows as soon as the vault exists, so without this it writes the secret in
+  # parallel with that grant and is refused.
   depends_on = [module.vault]
 }
 
