@@ -85,13 +85,20 @@ UK South. Build #6 was refused with `RequestDisallowedByPolicy` while it was
 public. (That policy's README says it is assigned in Audit mode; in this
 subscription it denies.)
 
-**Open dependency — a private endpoint.** A private account is reachable only
-through a private endpoint, which is PlatOps-owned networking and is not
-created here (cnp-plum-shared-infrastructure is the same). Until one exists,
-nothing can call Speech. When it does, real-time dictation must also stop
-connecting the *browser* straight to Speech: set `DIRECT_SDK_ACCESS=false` so
-the browser goes through the frontend, whose Caddyfile already proxies
-`/cognitiveservices/*` to `AZURE_SPEECH_ENDPOINT` server-side.
+**Private endpoint.** `ai-services.tf` creates it in `cft-<env>-vnet`'s
+`private-endpoints` subnet, in the AKS subscription (a private endpoint must
+share its VNet's subscription), as em-icp-api does. DNS in the central
+`privatelink.cognitiveservices.azure.com` zone is registered by the platform.
+`azurerm_private_endpoint` is approved for this repo in cnp-jenkins-config#1367.
+
+Because the browser can no longer reach Speech, real-time dictation must
+connect through the frontend: `DIRECT_SDK_ACCESS=false`, and the frontend's
+Caddyfile proxies `/cognitiveservices/*` to `AZURE_SPEECH_ENDPOINT`
+server-side, over the private endpoint.
+
+We comply rather than take a policy exception. Both apps this product replaces
+run their Speech accounts as named `notScopes` exceptions in
+`assign.allowed_ai_resources.json`; that is not the CNP default.
 
 ## Key Vault access
 
@@ -102,14 +109,18 @@ forbids granting that role. Every secret write then failed with
 `Assignment: (not found)` (builds #4–#6). Access policies need no role
 assignments, which is why every CNP product uses them.
 
-**Open dependency — a team AAD group.** In access-policy mode the module always
-creates a product-team policy, so `product_group_name` must name a real AAD
-security group. None exists for this product (there is no "AI Enablement" or
-"Justice AI" group), so the plan fails deliberately with a message saying so.
-PlatOps create these; once it exists, set `product_group_name` and add it to
-`team-config.yml` as `azure_ad_group`. This is also what lets a human seed the
-hand-managed secrets — until then, only Jenkins and the workload identity can
-read or write the vault.
+**Product group — `DTS Transcribe`.** In access-policy mode the module always
+creates a product-team policy, resolving `product_group_name` by display name,
+so the group must exist before `terraform plan` can succeed. Per CNP
+convention it is defined as code in `hmcts/azure-access` (`users/groups.yml`,
+created by azure-access#8294; members in `users/prod_users.yml`) and also
+named as `azure_ad_group` in `team-config.yml` (cnp-jenkins-config#1368) and as
+`TEAM_AAD_GROUP_ID` in `cnp-flux-config`. Members of this group add the secrets
+that cannot be generated — see "Secrets that must be seeded by hand".
+
+The two apps this replaces use `DTS Platform Operations` here, which leaves the
+product team unable to manage its own secrets; a product group is the CNP norm
+(`DTS Darts Modernisation`, `DTS Possession Claim Service`, `CPP Rota`).
 
 ## Key Vault secrets wait for the vault module
 

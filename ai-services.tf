@@ -52,6 +52,32 @@ module "speech_services" {
   cognitive_account_outbound_network_access_restricted = true
 }
 
+# The account is private (see above), so this endpoint is the only way to reach
+# it. It is created here rather than through the module's own
+# enable_managed_network option because the module puts the endpoint in the
+# account's resource group, in the CNP infra subscription, while the subnet is
+# in the AKS subscription — and a private endpoint must be in the same
+# subscription as its virtual network. Same pattern as em-icp-api.
+#
+# No private_dns_zone_group: like em-icp-api, the A record in the central
+# privatelink.cognitiveservices.azure.com zone (core-infra-intsvc-rg) is
+# registered by the platform.
+resource "azurerm_private_endpoint" "speech" {
+  provider            = azurerm.aks
+  name                = "${var.product}-speech-${var.env}-pe"
+  resource_group_name = local.cft_aks_network_rg_name
+  location            = var.location
+  subnet_id           = data.azurerm_subnet.cft_private_endpoints.id
+  tags                = local.tags
+
+  private_service_connection {
+    name                           = "${var.product}-speech-${var.env}-psc"
+    is_manual_connection           = false
+    private_connection_resource_id = module.speech_services.cognitive_account_id
+    subresource_names              = ["account"]
+  }
+}
+
 # Data-plane access for the product's managed identity, which is the identity
 # the AKS workload runs as. Control-plane roles do not cover token issuance, so
 # without this the pod authenticates and is then refused by Speech itself.

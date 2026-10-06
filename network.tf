@@ -131,3 +131,14 @@ locals {
   perftest_subnets  = var.env == "perftest" ? [data.azurerm_subnet.perftest_mgmt_subnet[0].id] : []
   all_valid_subnets = concat(local.standard_subnets, local.preview_subnets, local.perftest_subnets)
 }
+
+# Private endpoints for this product's PaaS resources go in the CFT cluster
+# network's dedicated `private-endpoints` subnet, as em-icp-api does. The
+# subnet (and so the endpoint) is in the AKS subscription, not the CNP infra
+# subscription that holds the rest of this repo's resources.
+data "azurerm_subnet" "cft_private_endpoints" {
+  provider             = azurerm.aks
+  name                 = "private-endpoints"
+  virtual_network_name = local.cft_aks_network_name
+  resource_group_name  = local.cft_aks_network_rg_name
+}
