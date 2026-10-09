@@ -42,3 +42,15 @@ resource "azurerm_key_vault_secret" "storage_account_name" {
   # parallel with that grant and is refused.
   depends_on = [module.vault]
 }
+
+# The API reads and writes audio with DefaultAzureCredential — the product's
+# managed identity — and mints user-delegation SAS URLs for Speech batch
+# transcription, which also needs a blob data role. Nothing granted one, so
+# every upload and read would have failed at runtime with 403. Storage Blob
+# Data Contributor is one of the six roles Jenkins' ABAC condition allows it to
+# assign (see ai-services.tf).
+resource "azurerm_role_assignment" "app_blob_contributor" {
+  scope                = module.storage_account.storageaccount_id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = one(module.vault.managed_identity_objectid)
+}

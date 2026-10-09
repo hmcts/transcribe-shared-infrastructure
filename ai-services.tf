@@ -78,20 +78,25 @@ resource "azurerm_private_endpoint" "speech" {
   }
 }
 
-# Data-plane access for the product's managed identity, which is the identity
-# the AKS workload runs as. Control-plane roles do not cover token issuance, so
-# without this the pod authenticates and is then refused by Speech itself.
+# Data-plane access for the product's managed identity — the identity the AKS
+# workload runs as. Control-plane roles do not cover token issuance, so without
+# this the pod authenticates and is then refused by Speech itself.
+#
+# "Cognitive Services User", not the narrower "Cognitive Services Speech User":
+# Jenkins' role-assignment permission (Role Based Access Control Administrator
+# on the subscription) carries an ABAC condition allowing only six roles, and
+# Speech User is not one of them — build #2 was refused with "ABAC condition
+# that is not fulfilled ... roleAssignments/write". Cognitive Services User is
+# on the list. It is broader (all data actions on the account), but it is
+# scoped to this one Speech-only account, which the product owns outright.
 resource "azurerm_role_assignment" "speech_user" {
   scope                = module.speech_services.cognitive_account_id
-  role_definition_name = "Cognitive Services Speech User"
+  role_definition_name = "Cognitive Services User"
   # one(): the module creates its managed identity with count, so the output is
   # a one-element tuple rather than a string.
   principal_id = one(module.vault.managed_identity_objectid)
 }
 
-# Consumed by the API through the chart's keyVaults block. The resource ID is
-# what selects the Managed Identity path; there is deliberately no
-# azure-speech-key counterpart.
 resource "azurerm_key_vault_secret" "speech_endpoint" {
   name         = "azure-speech-endpoint"
   value        = one(module.speech_services.cognitive_account_endpoint)

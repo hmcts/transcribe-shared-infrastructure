@@ -129,6 +129,23 @@ Jenkins' permission to write secrets is a separate resource inside the module,
 and a secret only references `key_vault_id`, so without the dependency
 Terraform writes secrets in parallel with that grant. Keep it.
 
+## Role assignments Jenkins is allowed to make
+
+Jenkins' permission to create role assignments is *Role Based Access Control
+Administrator* on the subscription, with an ABAC condition that allows exactly
+six roles: Cognitive Services OpenAI User, Cognitive Services User, PostgreSQL
+Flexible Server Long Term Retention Backup Role, Reader, Storage Account
+Contributor and Storage Blob Data Contributor. Any other role — Key Vault
+Administrator, Cognitive Services Speech User, Storage Blob Data Reader — is
+refused at apply time. Choose from that list, or ask PlatOps to make the grant.
+
+This repo grants the product managed identity (`transcribe-<env>-mi`):
+
+- **Cognitive Services User** on the Speech account (for Speech tokens and
+  batch transcription; Speech User is not permitted).
+- **Storage Blob Data Contributor** on the storage account (the API's audio
+  I/O and its user-delegation SAS URLs).
+
 ## Deploying
 
 The pipeline runs Terraform per environment; `env`, `product` and
