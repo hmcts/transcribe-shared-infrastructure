@@ -43,6 +43,7 @@ Terraform creates these:
 | `AppInsightsConnectionString` | this repo |
 | `azure-storage-account-name` | this repo |
 | `database-connection-string` | `transcribe-api/infrastructure` |
+| `web-redis-connection-string` | `transcribe-web/infrastructure` |
 | `azure-speech-endpoint` | this repo |
 | `azure-speech-resource-id` | this repo |
 
@@ -51,13 +52,10 @@ outside this product's Terraform:
 
 | Secret | Notes |
 |---|---|
-| `entra-client-id` | MoJ Entra (e-judiciary) app registration |
-| `entra-tenant-id` | " |
-| `entra-client-secret` | " |
+| `entra-client-secret` | Client secret of the MoJ-tenant app registration shared with courtstranscribe: its `microsoft-provider-authentication-secret` for the same environment. The tenant and client IDs are not secret and are set in the app charts. |
 | `azure-openai-api-key` | |
 | `azure-openai-endpoint` | |
 | `gov-notify-api-key` | GOV.UK Notify |
-| `jwt-secret-key` | Any high-entropy string |
 | `webhook-secret-encryption-key` | Must be a valid Fernet key: 32 random bytes, url-safe base64. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. A plain random string will fail at decrypt time, not at startup. |
 
 Seed one with:
