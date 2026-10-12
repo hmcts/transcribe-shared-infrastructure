@@ -81,3 +81,13 @@ variable "speech_account_sku" {
 variable "mgmt_subscription_id" {}
 
 variable "aks_subscription_id" {}
+
+variable "courtstranscribe_key_vault" {
+  description = "courtstranscribe's Key Vault for this environment, holding the shared app registration's client secret (microsoft-provider-authentication-secret). null skips the copy (see entra.tf)."
+  type = object({
+    subscription_id     = string
+    resource_group_name = string
+    name                = string
+  })
+  default = null
+}

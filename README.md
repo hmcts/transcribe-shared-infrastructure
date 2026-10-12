@@ -53,7 +53,7 @@ outside this product's Terraform:
 
 | Secret | Notes |
 |---|---|
-| `entra-client-secret` | Client secret of the MoJ-tenant app registration shared with courtstranscribe: its `microsoft-provider-authentication-secret` for the same environment. The tenant and client IDs are not secret and are set in the app charts. |
+| `entra-client-secret` | Copied by `entra.tf` from courtstranscribe's `microsoft-provider-authentication-secret` (the shared app registration) where `courtstranscribe_key_vault` is set, as batch-audio-transcription does; seed by hand elsewhere. |
 | `azure-openai-api-key` | Not mounted yet: add to the transcribe-api chart once Azure OpenAI exists |
 | `azure-openai-endpoint` | " |
 | `gov-notify-api-key` | GOV.UK Notify. Not mounted yet: add to the transcribe-api chart once seeded |
