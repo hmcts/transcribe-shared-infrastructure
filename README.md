@@ -47,6 +47,7 @@ Terraform creates these:
 | `webhook-secret-encryption-key` | `transcribe-api/infrastructure` |
 | `azure-speech-endpoint` | this repo |
 | `azure-speech-resource-id` | this repo |
+| `azure-openai-endpoint` | this repo (`openai.tf`) |
 
 These have to be seeded manually, because they are credentials for systems
 outside this product's Terraform:
@@ -54,8 +55,7 @@ outside this product's Terraform:
 | Secret | Notes |
 |---|---|
 | `entra-client-secret` | Copied by `entra.tf` from courtstranscribe's `microsoft-provider-authentication-secret` (the shared app registration) where `courtstranscribe_key_vault` is set, as batch-audio-transcription does; seed by hand elsewhere. |
-| `azure-openai-api-key` | Not mounted yet: add to the transcribe-api chart once Azure OpenAI exists |
-| `azure-openai-endpoint` | " |
+| `google-application-credentials-json` | Google service-account key (JSON) for Vertex Gemini, the API's primary model. Not mounted until seeded. |
 | `gov-notify-api-key` | GOV.UK Notify. Not mounted yet: add to the transcribe-api chart once seeded |
 
 Seed one with:
