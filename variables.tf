@@ -91,3 +91,9 @@ variable "courtstranscribe_key_vault" {
   })
   default = null
 }
+
+variable "openai_gpt4o_capacity" {
+  description = "gpt-4o deployment capacity, in thousands of tokens per minute."
+  type        = number
+  default     = 30
+}
