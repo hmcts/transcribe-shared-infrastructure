@@ -1,18 +1,6 @@
-# The web app signs users in with the same MoJ-tenant (JusticeUK) app
-# registration as courtstranscribe and batch-audio-transcription, so it needs
-# that registration's client secret. As batch-audio-transcription-infra does
-# (its data.tf / keyvault.tf), the secret is read from courtstranscribe's Key
-# Vault at apply time and written into ours, rather than seeded by hand: a
-# rotation in courtstranscribe reaches this app on the next apply.
-#
-# This needs, on the courtstranscribe side (a PlatOps / courtstranscribe-owner
-# grant; nothing in this repo can give it):
-#   - Reader on the vault for jenkins-<env>-mi, so the provider can resolve it;
-#   - an access policy with secret Get for jenkins-<env>-mi;
-#   - network access from the Jenkins agents (the vault's firewall is Deny by
-#     default).
-# Environments with no courtstranscribe vault configured skip the copy, and
-# entra-client-secret must be seeded by hand there.
+# Copies the shared app registration's client secret from courtstranscribe's
+# vault, as batch-audio-transcription-infra does. Access is granted by
+# courtstranscribe's auth_secret_readers.
 provider "azurerm" {
   features {}
   alias                           = "courtstranscribe"
