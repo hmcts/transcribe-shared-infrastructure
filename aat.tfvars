@@ -1,6 +1,7 @@
-# AAT uses courtstranscribe dev's app registration.
-courtstranscribe_key_vault = {
-  subscription_id     = "8b6ea922-0862-443e-af15-6056e1c9b9a4" # DCD-CFTAPPS-DEV
-  resource_group_name = "courtstranscribe-dev-rg"
-  name                = "hmcts-transcribe-kv-dev"
+# The benchnotes-aat app registration (hmcts/central-app-registration).
+entra_client_secret_source = {
+  subscription_id     = "6c4d2513-a873-41b4-afdd-b05a33206631"
+  resource_group_name = "central-app-registration-rg"
+  key_vault_name      = "central-app-reg-kv"
+  secret_name         = "benchnotes-aat-secret"
 }

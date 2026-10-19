@@ -54,7 +54,7 @@ outside this product's Terraform:
 
 | Secret | Notes |
 |---|---|
-| `entra-client-secret` | Copied by `entra.tf` from courtstranscribe's `microsoft-provider-authentication-secret` (the shared app registration) where `courtstranscribe_key_vault` is set, as batch-audio-transcription does; seed by hand elsewhere. |
+| `entra-client-secret` | Copied by `entra.tf` from the BenchNotes app registration's secret in `central-app-reg-kv` ([hmcts/central-app-registration](https://github.com/hmcts/central-app-registration)) where `entra_client_secret_source` is set; seed by hand elsewhere. |
 | `google-application-credentials-json` | Google service-account key (JSON) for Vertex Gemini, the API's primary model. Not mounted until seeded. |
 | `gov-notify-api-key` | GOV.UK Notify. Not mounted yet: add to the transcribe-api chart once seeded |
 
