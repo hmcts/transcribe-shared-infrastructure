@@ -82,12 +82,13 @@ variable "mgmt_subscription_id" {}
 
 variable "aks_subscription_id" {}
 
-variable "courtstranscribe_key_vault" {
-  description = "courtstranscribe's Key Vault for this environment, holding the shared app registration's client secret (microsoft-provider-authentication-secret). null skips the copy (see entra.tf)."
+variable "entra_client_secret_source" {
+  description = "Where the BenchNotes app registration's client secret is kept (central-app-reg-kv, from hmcts/central-app-registration). null skips the copy (see entra.tf)."
   type = object({
     subscription_id     = string
     resource_group_name = string
-    name                = string
+    key_vault_name      = string
+    secret_name         = string
   })
   default = null
 }
