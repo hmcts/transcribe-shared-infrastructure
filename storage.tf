@@ -44,13 +44,27 @@ resource "azurerm_key_vault_secret" "storage_account_name" {
 }
 
 # The API reads and writes audio with DefaultAzureCredential — the product's
-# managed identity — and mints user-delegation SAS URLs for Speech batch
-# transcription, which also needs a blob data role. Nothing granted one, so
-# every upload and read would have failed at runtime with 403. Storage Blob
-# Data Contributor is one of the six roles Jenkins' ABAC condition allows it to
-# assign (see ai-services.tf).
+# managed identity — and mints user-delegation SAS URLs for the browser's
+# dictation uploads and downloads, which also needs a blob data role. Nothing
+# granted one, so every upload and read would have failed at runtime with 403.
+# Speech batch transcription does not use a SAS: the API passes Speech a plain
+# blob URL, and Speech reads it as its own identity (see below).
 resource "azurerm_role_assignment" "app_blob_contributor" {
   scope                = module.storage_account.storageaccount_id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = one(module.vault.managed_identity_objectid)
+}
+
+# Speech batch transcription reads the audio blob in contentUrls as its own
+# system-assigned identity: the API sends a plain URL, with no SAS. This is
+# Azure's "trusted Azure services" route. The module's firewall already has
+# bypass = AzureServices, which lets Speech through when its identity holds a
+# data role, and the blob host is in Speech's outbound allowlist
+# (ai-services.tf). Without this grant, storage refuses Speech. Read-only:
+# Speech never writes here.
+resource "azurerm_role_assignment" "speech_blob_reader" {
+  scope                = module.storage_account.storageaccount_id
+  role_definition_name = "Storage Blob Data Reader"
+  # one(): the module returns the identity as a one-element list.
+  principal_id = one(module.speech_services.cognitive_account_identity)
 }

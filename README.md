@@ -96,6 +96,12 @@ connect through the frontend: `DIRECT_SDK_ACCESS=false`, and the frontend's
 Caddyfile proxies `/cognitiveservices/*` to `AZURE_SPEECH_ENDPOINT`
 server-side, over the private endpoint.
 
+**Outbound is restricted too**, so Speech can reach only the hosts in
+`cognitive_account_fqdns`. That is set to the storage account's blob host,
+because batch transcription fetches its audio from there. With an empty list,
+job submission fails with 403 "No permission to access this outbound
+connection".
+
 We comply rather than take a policy exception. Both apps this product replaces
 run their Speech accounts as named `notScopes` exceptions in
 `assign.allowed_ai_resources.json`; that is not the CNP default.
@@ -132,19 +138,28 @@ Terraform writes secrets in parallel with that grant. Keep it.
 ## Role assignments Jenkins is allowed to make
 
 Jenkins' permission to create role assignments is *Role Based Access Control
-Administrator* on the subscription, with an ABAC condition that allows exactly
-six roles: Cognitive Services OpenAI User, Cognitive Services User, PostgreSQL
-Flexible Server Long Term Retention Backup Role, Reader, Storage Account
-Contributor and Storage Blob Data Contributor. Any other role — Key Vault
-Administrator, Cognitive Services Speech User, Storage Blob Data Reader — is
-refused at apply time. Choose from that list, or ask PlatOps to make the grant.
+Administrator* on the subscription, with an ABAC condition that allows only
+listed roles. As of 2026-10-27 the list in DCD-CNP-DEV, DCD-CNP-QA and
+DCD-CNP-Prod has eight roles: Cognitive Services OpenAI User, Cognitive
+Services User, Cognitive Services Speech User, PostgreSQL Flexible Server Long
+Term Retention Backup Role, Reader, Storage Account Contributor, Storage Blob
+Data Contributor and Storage Blob Data Reader. Any other role, such as Key
+Vault Administrator, is refused at apply time. Choose from that list, or ask
+PlatOps to make the grant.
 
 This repo grants the product managed identity (`transcribe-<env>-mi`):
 
 - **Cognitive Services User** on the Speech account (for Speech tokens and
-  batch transcription; Speech User is not permitted).
+  batch transcription; chosen when Speech User was not yet on the list).
 - **Storage Blob Data Contributor** on the storage account (the API's audio
-  I/O and its user-delegation SAS URLs).
+  I/O and its user-delegation SAS URLs for dictation).
+
+and the Speech account's own system-assigned identity:
+
+- **Storage Blob Data Reader** on the storage account. Batch transcription
+  reads the audio blob in `contentUrls` as this identity, because the API sends
+  a plain URL with no SAS. The storage firewall lets it through via
+  `bypass = AzureServices`.
 
 ## Deploying
 
