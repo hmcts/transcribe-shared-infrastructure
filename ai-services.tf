@@ -43,10 +43,8 @@ module "speech_services" {
   # access restricted, local auth disabled and a UK South location. Build #6 was
   # refused with RequestDisallowedByPolicy while this was public.
   #
-  # Consequence: the account is reachable only through a private endpoint, which
-  # is PlatOps-owned networking and is not created here (cnp-plum-shared-
-  # infrastructure is the same: "attached later by a separate process"). Until
-  # it exists, nothing can call Speech — see the README.
+  # Consequence: the account is reachable only through the private endpoint
+  # below, and only once that endpoint has DNS (see there and the README).
   public_network_access_cognitive                      = false
   cognitive_account_network_acls_default_action        = "Deny"
   cognitive_account_outbound_network_access_restricted = true
@@ -59,9 +57,13 @@ module "speech_services" {
 # in the AKS subscription — and a private endpoint must be in the same
 # subscription as its virtual network. Same pattern as em-icp-api.
 #
-# No private_dns_zone_group: like em-icp-api, the A record in the central
-# privatelink.cognitiveservices.azure.com zone (core-infra-intsvc-rg) is
-# registered by the platform.
+# No private_dns_zone_group: like em-icp-api, DNS is not managed here. The A
+# record in the central privatelink.cognitiveservices.azure.com zone
+# (core-infra-intsvc-rg) and the zone's link to cft-<env>-vnet come from
+# hmcts/azure-private-dns (environments/privatelink/cognitive-services-private-
+# link.yml) and are added by PR there, e.g. hmcts/azure-private-dns#1105 for
+# aat. Without them the account's name resolves to its public IP and Speech
+# returns 403.
 resource "azurerm_private_endpoint" "speech" {
   provider            = azurerm.aks
   name                = "${var.product}-speech-${var.env}-pe"

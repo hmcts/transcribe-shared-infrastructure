@@ -85,8 +85,10 @@ subscription it denies.)
 
 **Private endpoint.** `ai-services.tf` creates it in `cft-<env>-vnet`'s
 `private-endpoints` subnet, in the AKS subscription (a private endpoint must
-share its VNet's subscription), as em-icp-api does. DNS in the central
-`privatelink.cognitiveservices.azure.com` zone is registered by the platform.
+share its VNet's subscription), as em-icp-api does. Its A record in the central
+`privatelink.cognitiveservices.azure.com` zone, and the zone's link to
+`cft-<env>-vnet`, come from hmcts/azure-private-dns and are added by PR there
+(hmcts/azure-private-dns#1105 for aat). OpenAI's endpoint is set up the same way.
 `azurerm_private_endpoint` is approved for this repo in cnp-jenkins-config#1367.
 
 Because the browser can no longer reach Speech, real-time dictation must
