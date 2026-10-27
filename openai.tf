@@ -1,6 +1,7 @@
 # Azure OpenAI for transcribe-api's GPT-4o fallback (Gemini is primary). Same
 # constraints as Speech in ai-services.tf: private, Entra-only, reached through
-# a private endpoint in the AKS subscription.
+# a private endpoint in the AKS subscription, with its A record and VNet link in
+# hmcts/azure-private-dns.
 module "openai_services" {
   source = "git@github.com:hmcts/terraform-module-ai-services?ref=main"
 
