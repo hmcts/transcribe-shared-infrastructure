@@ -59,6 +59,9 @@ resource "azurerm_private_endpoint" "openai" {
     private_connection_resource_id = module.openai_services.cognitive_account_id
     subresource_names              = ["account"]
   }
+
+  # The gpt-4o deployment holds the account in Accepted, which refuses the endpoint.
+  depends_on = [module.openai_services]
 }
 
 resource "azurerm_role_assignment" "openai_user" {
