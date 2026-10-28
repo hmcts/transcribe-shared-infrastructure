@@ -98,3 +98,14 @@ variable "openai_gpt4o_capacity" {
   type        = number
   default     = 30
 }
+
+variable "sa_account_replication_type" {
+  description = "Replication for the storage account in storage.tf."
+  type        = string
+  default     = "LRS"
+
+  validation {
+    condition     = contains(["LRS", "ZRS", "GRS", "RAGRS", "GZRS", "RAGZRS"], var.sa_account_replication_type)
+    error_message = "sa_account_replication_type must be one of LRS, ZRS, GRS, RAGRS, GZRS or RAGZRS."
+  }
+}

@@ -73,3 +73,8 @@ resource "azurerm_key_vault_secret" "openai_endpoint" {
   key_vault_id = module.vault.key_vault_id
   depends_on   = [module.vault]
 }
+
+# Only the cognitiveservices.azure.com entry gets an A record.
+output "openaiPrivateEndpointDns" {
+  value = azurerm_private_endpoint.openai.custom_dns_configs
+}

@@ -140,3 +140,9 @@ output "speechAccountId" {
 output "speechEndpoint" {
   value = one(module.speech_services.cognitive_account_endpoint)
 }
+
+# For the A record in hmcts/azure-private-dns. The endpoint is in the AKS
+# subscription, which the team can't read, so the apply log is the only source.
+output "speechPrivateEndpointDns" {
+  value = azurerm_private_endpoint.speech.custom_dns_configs
+}

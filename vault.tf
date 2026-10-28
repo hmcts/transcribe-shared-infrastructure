@@ -35,3 +35,8 @@ output "vaultName" {
 output "vaultUri" {
   value = module.vault.key_vault_uri
 }
+
+# For the workload identity annotation in hmcts/cnp-flux-config.
+output "managedIdentityClientId" {
+  value = one(module.vault.managed_identity_clientid)
+}
