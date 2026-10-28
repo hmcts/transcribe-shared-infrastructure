@@ -141,10 +141,8 @@ output "speechEndpoint" {
   value = one(module.speech_services.cognitive_account_endpoint)
 }
 
-# The private endpoint's FQDNs and IPs, for the A record in
-# hmcts/azure-private-dns (environments/privatelink/cognitive-services-private-
-# link.yml). Printed by the pipeline's apply: the endpoint is in the AKS
-# subscription, which the team cannot read.
+# For the A record in hmcts/azure-private-dns. The endpoint is in the AKS
+# subscription, which the team can't read, so the apply log is the only source.
 output "speechPrivateEndpointDns" {
   value = azurerm_private_endpoint.speech.custom_dns_configs
 }

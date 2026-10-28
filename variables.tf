@@ -100,7 +100,7 @@ variable "openai_gpt4o_capacity" {
 }
 
 variable "sa_account_replication_type" {
-  description = "Replication for the storage account in storage.tf. ZRS in prod (prod.tfvars)."
+  description = "Replication for the storage account in storage.tf."
   type        = string
   default     = "LRS"
 

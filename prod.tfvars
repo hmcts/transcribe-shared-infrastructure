@@ -6,7 +6,5 @@ entra_client_secret_source = {
   secret_name         = "benchnotes-prod-secret"
 }
 
-# Zone-redundant: prod holds the only copy of judges' audio and transcripts.
-# Set before the first prod apply: azurerm replaces the account to move
-# between LRS and ZRS.
+# Changing between LRS and ZRS later replaces the account and loses its data.
 sa_account_replication_type = "ZRS"

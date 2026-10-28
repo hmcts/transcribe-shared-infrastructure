@@ -74,8 +74,7 @@ resource "azurerm_key_vault_secret" "openai_endpoint" {
   depends_on   = [module.vault]
 }
 
-# As speechPrivateEndpointDns in ai-services.tf. The A record uses the
-# cognitiveservices.azure.com entry only.
+# Only the cognitiveservices.azure.com entry gets an A record.
 output "openaiPrivateEndpointDns" {
   value = azurerm_private_endpoint.openai.custom_dns_configs
 }
