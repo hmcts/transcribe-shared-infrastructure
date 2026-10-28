@@ -35,3 +35,9 @@ output "vaultName" {
 output "vaultUri" {
   value = module.vault.key_vault_uri
 }
+
+# Client ID of transcribe-<env>-mi, for the workload identity in
+# hmcts/cnp-flux-config.
+output "managedIdentityClientId" {
+  value = one(module.vault.managed_identity_clientid)
+}

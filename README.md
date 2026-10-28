@@ -61,7 +61,7 @@ outside this product's Terraform:
 Seed one with:
 
 ```bash
-az keyvault secret set --vault-name transcribe-aat --name gov-notify-api-key --value '<value>'
+az keyvault secret set --vault-name transcribe-<env> --name gov-notify-api-key --value '<value>'
 ```
 
 ## Azure Speech
