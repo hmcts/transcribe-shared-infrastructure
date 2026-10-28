@@ -48,6 +48,13 @@ module "speech_services" {
   public_network_access_cognitive                      = false
   cognitive_account_network_acls_default_action        = "Deny"
   cognitive_account_outbound_network_access_restricted = true
+
+  # With outbound restricted, Speech can reach only the hosts listed here.
+  # Batch transcription fetches the audio in contentUrls itself, from this
+  # product's storage account, so its blob host must be allowed. An empty list
+  # gets "No permission to access this outbound connection" (403) on submit.
+  # Speech reads the blob as its own identity; see storage.tf.
+  cognitive_account_fqdns = ["${module.storage_account.storageaccount_name}.blob.core.windows.net"]
 }
 
 # The account is private (see above), so this endpoint is the only way to reach
@@ -86,11 +93,12 @@ resource "azurerm_private_endpoint" "speech" {
 #
 # "Cognitive Services User", not the narrower "Cognitive Services Speech User":
 # Jenkins' role-assignment permission (Role Based Access Control Administrator
-# on the subscription) carries an ABAC condition allowing only six roles, and
-# Speech User is not one of them — build #2 was refused with "ABAC condition
-# that is not fulfilled ... roleAssignments/write". Cognitive Services User is
-# on the list. It is broader (all data actions on the account), but it is
-# scoped to this one Speech-only account, which the product owns outright.
+# on the subscription) carries an ABAC condition allowing only listed roles
+# (see the README). Speech User was not on it when build #2 was refused with
+# "ABAC condition that is not fulfilled ... roleAssignments/write"; it has been
+# added since. Cognitive Services User is on the list. It is broader (all data
+# actions on the account), but it is scoped to this one Speech-only account,
+# which the product owns outright.
 resource "azurerm_role_assignment" "speech_user" {
   scope                = module.speech_services.cognitive_account_id
   role_definition_name = "Cognitive Services User"
