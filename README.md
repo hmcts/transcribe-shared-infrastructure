@@ -17,7 +17,9 @@ This is the middle of the three CNP infrastructure tiers:
 
 - Resource group `transcribe-shared-infrastructure-<env>`
 - Key Vault **`transcribe-<env>`** — the name is load-bearing, see below
-- Application Insights, plus the `AppInsightsConnectionString` secret
+- Application Insights, plus the `AppInsightsConnectionString` secret. Sampling is
+  100% in every environment (`sampling_percentage`; the module's non-prod default
+  is 1%), and the daily cap (`daily_data_cap_in_gb`, 5 GB) bounds the cost
 - Storage account with `audio` and `transcriptions` containers, plus the
   `azure-storage-account-name` secret
 
