@@ -10,6 +10,7 @@ module "application_insights" {
 
   daily_data_cap_in_gb = var.daily_data_cap_in_gb
   alert_limit_reached  = var.alert_limit_reached
+  sampling_percentage  = var.sampling_percentage
 }
 
 # Both components read this at BUILD time: Jenkinsfile_CNP declares

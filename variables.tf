@@ -44,6 +44,18 @@ variable "daily_data_cap_in_gb" {
   default     = 5
 }
 
+variable "sampling_percentage" {
+  description = <<-EOT
+    App Insights ingestion sampling. 100 everywhere (DIAAT-205): the module's
+    default for non-prod environments is 1%, which keeps about one request,
+    event or log in a hundred, so the observability workbooks, alerts and the
+    DIAAT-287 telemetry validation would be meaningless in AAT and demo. Usage
+    is low; the daily cap (daily_data_cap_in_gb) bounds the cost.
+  EOT
+  type        = number
+  default     = 100
+}
+
 variable "alert_limit_reached" {
   description = "Use a scheduled query rule for the daily-cap alert instead of an activity log alert. Set where the subscription has hit its limit of 100 activity log alerts."
   type        = bool
