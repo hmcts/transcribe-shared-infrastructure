@@ -11,7 +11,8 @@
 //   "live_draft.save_recovered"   - autosave works again (live_draft.outage_seconds);
 //   "dictation.session_ended" with hmcts.error.code "autosave.failed" - sessions that ended
 //                                   while autosave was still stalled.
-// Area: dictation only (DIAAT-205, decision 1). Relayed browser events carry no hmcts.area,
+// Area: dictation only (DIAAT-205, decision 1), plus events with no area at all (the
+// names are dictation's only; see the filter below). Relayed browser events carry no hmcts.area,
 // so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
 // Formula, per day, event and failure kind:
 //   events   = number of events

@@ -7,7 +7,8 @@ the two heritage modules (courtstranscribe and batch-audio-transcription-infra).
 
 Every query runs against the environment's Application Insights resource: one per
 environment, so no query splits by environment. Sampling is 100% (`sampling_percentage`
-in the product's `application-insights.tf`); queries still `sum(itemCount)`.
+in the product's `application-insights.tf`), so `count()` and `sum(itemCount)` agree;
+new queries should still `sum(itemCount)`.
 
 ## Layout
 
@@ -17,9 +18,10 @@ in the product's `application-insights.tf`); queries still `sum(itemCount)`.
 | `kql/dictation_*.kql` | dictation only |
 | `kql/recording_*.kql` | recording only |
 | `kql/ai_*.kql` | AI usage (Speech and LLMs) for both areas, by feature and mode |
-| `kql/workload_*.kql` | volumes and capacity, with an `area` column |
+| `kql/workload_*.kql` | volumes and capacity across areas (area-only ones are `dictation_workload_*` / `recording_workload_*`) |
 | `kql/cost_*.kql` | cost allocation by usage share |
-| `kql/alert_<service|dictation|recording>_*.kql` | alert queries (see `ALERTS.md`) |
+| `kql/alert_<service|dictation|recording>_*.kql` | alert queries |
+| `ALERTS.md`, `MEASURES.md`, `VALIDATION.md` | the alerts and runbooks, the measures, and the DIAAT-287 validation |
 | `validation/*.kql` | DIAAT-287 checks, run by hand, not panels |
 | `telemetry-names.txt` | every name the KQL may use, generated from transcribe-api |
 | `tests/` | the name and area check, and its tests |

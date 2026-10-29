@@ -9,7 +9,8 @@
 // in ai_audio_hours_daily.kql).
 // Formula, per day: usage; trailing_7d_avg = average of the 7 days before it (days with no
 // usage count as 0); ratio = usage / trailing_7d_avg.
-// Caveats: the ai-usage-spike alert cannot use this baseline (an alert query reads at
+// Caveats: the AI usage spike alerts (alert_service_ai_usage_spike.kql and
+// alert_service_ai_token_spike.kql) cannot use this baseline (an alert query reads at
 // most 2 days, see ALERTS.md): it compares with the previous 24 hours. Weekends lower the
 // average.
 let llm = customMetrics
