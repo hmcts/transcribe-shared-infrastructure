@@ -13,7 +13,7 @@ union
     | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
         tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
     | where area == "recording"
-    | summarize jobs = count() by day = bin(timestamp, 1d)
+    | summarize jobs = todouble(count()) by day = bin(timestamp, 1d)
     | extend series = "created"),
     (customMetrics
     | where name == "transcription.jobs.finished"
