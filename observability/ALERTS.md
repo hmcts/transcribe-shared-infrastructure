@@ -5,9 +5,9 @@ to each alert. The queries are the `kql/alert_*.kql` files in this module. Each 
 `//` comment that gives the measure, the source and the caveats. The file is authoritative: if this
 page and a file disagree, the file is right and this page needs fixing.
 
-> **Status: not deployed.** This module holds the queries only. The Terraform for the rules,
-> action groups, workbooks and availability tests is a later PR. It waits for PlatOps to allow
-> those resource types on CNP. Every alert will ship with `alerts_enabled = false`.
+> **Status: off.** The rules and action groups are defined in `alerts.tf` and created only when
+> `alerts_enabled` is true (the root's `observability_alerts_enabled`, default false). They
+> cannot be switched on until PlatOps decide the route and allow the resource types.
 >
 > Open with PlatOps:
 > - **Routing.** Whether alerts go to Dynatrace, to a Slack action group, or to our own action
@@ -16,7 +16,8 @@ page and a file disagree, the file is right and this page needs fixing.
 >   metric alerts, action groups, workbooks and standard web tests are allowed.
 > - **Owner teams.** The service team and Security are placeholders until PlatOps confirms them.
 > - **Severity scale.** The heritage dictation rules used 1 (critical) and 2 (warning). The
->   heritage recording rules used the Azure scale 0 to 4. One scale is to be agreed.
+>   heritage recording rules used the Azure scale 0 to 4. `alerts.tf` uses 1 critical, 2 warning,
+>   3 informational and 4 test; to be agreed.
 >
 > The thresholds are **provisional**. They come from technical refinement, before any baseline
 > data. Revise them once a few weeks of data exist (see [Revising thresholds](#revising-thresholds)).
@@ -40,7 +41,7 @@ page and a file disagree, the file is right and this page needs fixing.
   environment: aat, perftest, ithc, demo, prod). No query splits by environment.
 - The rule's window is the query's time range. The queries have no time filter of their own,
   except the two AI spike queries, which read 2 days.
-- Some queries need a parameter. The Terraform will prepend it as a `let` line, for example
+- Some queries need a parameter. `alerts.tf` prepends it as a `let` line, for example
   `let min_requests = 20;`. To run such a query by hand in Logs, prepend the same line. The
   parameter and its Logs example are in the file's comment.
 - The rule's measure and dimensions must be columns of the file's final `| project`. The column
@@ -156,6 +157,7 @@ ISO 8601 durations as the Terraform takes them.
 | [speech-connection-failures](#speech-connection-failures) | `kql/alert_recording_speech_connection_failures.kql` | `failures` (Total, GreaterThan, 5) | PT30M / PT10M | 2 | `error_code` | service team |
 | [storage-failed](#storage-failed) | `kql/alert_recording_storage_failed.kql` | `failures` (Total, GreaterThan, 0) | PT15M / PT5M | 2 | `operation`, `error_code` | service team |
 | [upload-failures](#upload-failures) | `kql/alert_recording_upload_failures.kql` | `failures` (Total, GreaterThan, 10) | PT1H / PT15M | 3 | `outcome`, `error_code` | service team |
+| [availability-test](#availability-test) | none: a metric alert on each availability test | failed locations (GreaterThanOrEqual, 2 of 5) | PT5M / PT1M | dictation 1, recording 0 | the test | service team |
 
 Notes on the table:
 
@@ -173,6 +175,11 @@ Notes on the table:
   `/api/openapi.json`) and for transcribe-web's own requests.
 - The dictation heritage rules called availability "endpoint-availability" and the 5xx rule
   "server-error-rate". The names above follow the merged files.
+- **Terraform defaults.** Where a value is "to be agreed", `alert_thresholds` in `variables.tf`
+  defaults to the dictation value: availability 90% with `min_requests` 20, 5xx 2% over PT30M,
+  ownership violations over PT10M, `min_baseline_hours` 2, `min_baseline_tokens` 200,000, AI spikes
+  every PT6H, and Sev 1 for the critical alerts. Every rule resolves itself. Change a value by
+  setting `alert_thresholds` once it is agreed.
 
 ## Common first checks on AKS
 
@@ -181,8 +188,8 @@ App Service, no Easy Auth and no Sentry on CNP.
 
 1. **Run the alert's query in Logs.** Open the environment's Application Insights resource, then
    Logs. Paste the `.kql` file (prepend its `let` parameter if it has one) and set the time range
-   to the alert window. Then run the related panel queries named in the runbook. The workbooks
-   that will show these panels are part of the later Terraform PR; until then, run the files.
+   to the alert window. Then run the related panel queries named in the runbook; most are also
+   panels of the environment's workbooks (`workbooks.tf`).
 2. **Pods.** `kubectl -n transcribe get pods`. Look for restarts, `CrashLoopBackOff`, `Pending`,
    `ImagePullBackOff` or `OOMKilled` (`kubectl -n transcribe describe pod <pod>`).
    `kubectl -n transcribe get deploy` lists the API and worker deployments.
@@ -420,6 +427,22 @@ input and output. Usage, never cost.
 **Likely causes and fixes.** A retry loop or a job reprocessed, a fallback storm (calls going to
 Grok or GPT-4o after Gemini fails), very long uploads, or genuine growth. Fix a loop and tell
 PlatOps about the cost; a provider problem goes to PlatOps or the provider.
+
+### availability-test
+
+A metric alert per standard availability test (`availability-tests.tf`), not a query: Sev 1 when a
+test fails from `availability_test_failed_locations` (2) or more of its 5 locations in 5 minutes.
+The heritage dictation rule used Sev 1 over 5 minutes, the recording rule Sev 0 over 15 minutes;
+to be agreed. No test exists yet: which CNP URLs Azure's public test agents can reach is a PlatOps
+question (`observability_availability_test_urls`, empty).
+
+**Means.** The service cannot be reached from outside, or answers its health URL with something
+other than 200 (a redirect to sign-in is a failure).
+
+**First checks.** `kql/service_availability_synthetic.kql`, then
+[service-unavailable](#service-unavailable) and the [common first checks](#common-first-checks-on-aks).
+If only the test fails and real requests succeed, suspect the ingress, DNS or the certificate
+(the test fails 7 days before it expires).
 
 ## Dictation alerts
 
@@ -699,13 +722,10 @@ in use, which is a product question, not an outage.
 
 ## Not covered by a query alert
 
-- **Synthetic availability (web tests).** Both heritage modules had a metric alert on standard web
-  tests (fails from 2 of 5 locations; dictation Sev 1 over 5 minutes, recording Sev 0 over 15
-  minutes). It is a metric alert, not a query, and comes with the web tests in the later Terraform
-  PR. Its panel is `kql/service_availability_synthetic.kql`. Which URLs to test on CNP, the window
-  and the severity are to be agreed.
+- **Synthetic availability.** A metric alert, not a query: see
+  [availability-test](#availability-test).
 - **The API sends no telemetry at all.** If transcribe-api is fully down, the request-based alerts
-  see nothing. Only the web tests (above) or a platform probe can show it. Whether Dynatrace probes
+  see nothing. Only the availability tests or a platform probe can show it. Whether Dynatrace probes
   the service is a PlatOps question.
 - **Jobs waiting for the dictation upload poller.** No queue metric for dictation uploads.
 - **Azure Speech timeouts and throttling for dictation uploads** are not split by type: they show
@@ -721,10 +741,10 @@ Run these once in each environment after the alerts are first enabled, again aft
 routing or receivers. For each, record the alert, the time it fired, who received it and when, in
 DIAAT-287 (see `VALIDATION.md`). The alert must arrive at its route, and nowhere else.
 
-The heritage recording module used `alert_threshold_overrides` (a temporary per-alert threshold
-that a healthy system meets) to make each critical rule fire through its real action group,
-without breaking anything. Whether the merged Terraform keeps that variable is to be agreed in the
-Terraform PR. With it:
+`alert_threshold_overrides` (alert name => threshold) sets a temporary threshold that a healthy
+system meets, so each critical rule fires through its real action group without breaking
+anything. A key that is not an alert (or `availability-test`) fails the plan. Remove each override
+after its test.
 
 | Critical alert | Controlled test | Expected |
 |---|---|---|

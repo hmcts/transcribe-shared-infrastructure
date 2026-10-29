@@ -1,6 +1,7 @@
-# Observability queries (DIAAT-205)
+# Observability (DIAAT-205)
 
-The KQL behind the transcribe product's workbooks and alerts, for both areas of the
+The workbooks, alerts and availability tests of the transcribe product, and the KQL behind
+them, for both areas of the
 merged service: **dictation** (live dictation, uploads, minutes and documents) and
 **recording** (hearing recordings transcribed by Azure Speech batch jobs). It merges
 the two heritage modules (courtstranscribe and batch-audio-transcription-infra).
@@ -24,7 +25,14 @@ new queries should still `sum(itemCount)`.
 | `ALERTS.md`, `MEASURES.md`, `VALIDATION.md` | the alerts and runbooks, the measures, and the DIAAT-287 validation |
 | `validation/*.kql` | DIAAT-287 checks, run by hand, not panels |
 | `telemetry-names.txt` | every name the KQL may use, generated from transcribe-api |
-| `tests/` | the name and area check, and its tests |
+| `tests/` | the name and area check, and its tests; `observability.tftest.hcl`, the module's tests |
+| `workbooks.tf` | the five views: service health, dictation, recording, workload, AI usage |
+| `alerts.tf` | the alert rules and action groups (off: `alerts_enabled`) |
+| `availability-tests.tf` | standard availability tests, one per URL in `availability_test_urls` |
+
+The root's `observability.tf` instantiates this folder as a module, once per environment.
+PlatOps must allow workbooks, standard web tests, scheduled query rules, metric alerts and action
+groups on CNP before it can be applied.
 
 ## Services (`cloud_RoleName`)
 
@@ -88,7 +96,10 @@ browser's rejected file is `upload.file_rejected` (decision 3).
 ```bash
 python3 observability/tests/check_kql_names.py
 python3 -m unittest discover -s observability/tests
+terraform -chdir=observability init -backend=false && terraform -chdir=observability test
 ```
+
+The Terraform tests use a mock provider: no Azure access is needed.
 
 After transcribe-api's telemetry changes, regenerate the names from a checkout of its
 master and commit them with any KQL change:
