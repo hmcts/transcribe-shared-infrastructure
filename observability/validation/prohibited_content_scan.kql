@@ -61,6 +61,8 @@ let scanned = union isfuzzy=true
     (requests | where timestamp between (window_start .. window_end)
         | project table = "requests", column = "customDimensions", row_id = itemId, text = tostring(customDimensions)),
     (dependencies | where timestamp between (window_start .. window_end)
+        | project table = "dependencies", column = "name", row_id = itemId, text = name),
+    (dependencies | where timestamp between (window_start .. window_end)
         | project table = "dependencies", column = "data", row_id = itemId, text = data),
     (dependencies | where timestamp between (window_start .. window_end)
         | project table = "dependencies", column = "target", row_id = itemId, text = target),
