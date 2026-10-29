@@ -40,7 +40,7 @@
 // Caveats: Azure exports arrive a day or more late and can be restated; use whole days in
 // the past. Shares use the dictation estimate for realtime Speech.
 let azure_billing = AZURE_BILLING_EXPORT
-    | where tolower(tostring(ResourceId)) in (dynamic(BILLING_RESOURCE_IDS))
+    | where tostring(ResourceId) in~ (dynamic(BILLING_RESOURCE_IDS))
     | extend meter = tostring(MeterName), subcategory = tostring(MeterSubCategory)
     | extend meter_group = iff(subcategory has "Speech" or meter has "Speech", "azure_speech", "azure_llm")
     | project day = startofday(todatetime(Date)), meter_group,
