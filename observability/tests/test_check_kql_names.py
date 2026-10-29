@@ -134,6 +134,17 @@ class AreaQueries(unittest.TestCase):
         errors = self._errors("recording_jobs.kql", text)
         self.assertTrue(any("customEvents is read without an hmcts.area filter" in e for e in errors), errors)
 
+    def test_a_branch_that_reads_but_does_not_filter_the_area_is_rejected(self) -> None:
+        # PR review: an unfiltered branch unioned into a filtered one mixes the areas.
+        text = (
+            '// Jobs.\nlet all = customEvents\n'
+            '| extend area = tostring(customDimensions["hmcts.area"]);\n'
+            'let mine = customEvents\n' + self.AREA_FILTER + '| where name == "job.finished";\n'
+            'union all, mine\n| summarize jobs = count()\n'
+        )
+        errors = self._errors("recording_jobs.kql", text)
+        self.assertTrue(any('without `| where area == "recording"`' in e for e in errors), errors)
+
     def test_an_area_query_must_keep_its_own_area(self) -> None:
         text = self.QUERY.format(area=self.AREA_FILTER.replace('"recording"', '"dictation"'))
         errors = self._errors("recording_jobs.kql", text)
@@ -159,6 +170,33 @@ class DimensionNames(unittest.TestCase):
         allowed = checker.load_allowlist()
         self.assertIn(("journey", "dictation.session"), allowed)
         self.assertNotIn(("journey", "nope.journey"), allowed)
+
+
+class AliasedNames(unittest.TestCase):
+    """PR review: `event = tostring(customDimensions["event"]) | where event in (...)`."""
+
+    def test_aliased_event_and_journey_names_are_checked(self) -> None:
+        text = (
+            'customMetrics\n| extend event = tostring(customDimensions["event"]),\n'
+            '    journey = tostring(customDimensions["hmcts.journey.type"])\n'
+            '| where event in ("speech.session_stopped", "speech.no_such_event")\n'
+            '| where journey == "dictation.session"\n'
+        )
+        found, _ = checker.references(text)
+        self.assertIn(("event", "speech.no_such_event"), found)
+        self.assertIn(("event", "speech.session_stopped"), found)
+        self.assertIn(("journey", "dictation.session"), found)
+
+    def test_a_typo_in_an_aliased_event_fails_the_check(self) -> None:
+        text = (
+            '// Latency.\ncustomMetrics\n| where name == "hmcts.event.duration"\n'
+            '| extend event = tostring(customDimensions["event"])\n| where event in ("speech.frist_result")\n'
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            kql = Path(tmp)
+            (kql / "workload_x.kql").write_text(text, encoding="utf-8")
+            errors = checker.check(kql, checker.ALLOWLIST)
+        self.assertTrue(any("speech.frist_result" in e for e in errors), errors)
 
 
 class ValidationQueries(unittest.TestCase):

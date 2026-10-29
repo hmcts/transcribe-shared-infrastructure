@@ -43,5 +43,15 @@ class ScanPatterns(unittest.TestCase):
                 self.assertIn(f'iff({name}, "{name}", "")', text)
 
 
+class ClearedRows(unittest.TestCase):
+    """PR review: sign-off needs every match reviewed, not five samples per group."""
+
+    def test_cleared_false_positives_are_excluded_before_the_hits_are_counted(self) -> None:
+        text = SCAN.read_text(encoding="utf-8")
+        self.assertIn("let cleared_row_ids = dynamic([]);", text)
+        hits = text[text.index("let hits = scanned"):]
+        self.assertTrue(hits.splitlines()[1].strip() == "| where row_id !in (cleared_row_ids)")
+
+
 if __name__ == "__main__":
     unittest.main()

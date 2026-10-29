@@ -28,12 +28,18 @@
 // synthetic case in VALIDATION.md and nothing else.
 //
 // Pass: a "(scanned)" row with matches > 0 for traces, customEvents and requests (an empty window
-// proves nothing), and no other rows. Any other row fails until each of its sample rows has been
-// triaged: a false positive (for example a postcode-like token in a stack trace) is recorded with
-// its itemId and the reason; a true positive is a defect (raise it, and it blocks sign-off).
+// proves nothing), and no other rows. sample_row_ids holds at most max_samples of a group's
+// matches, so clearing the samples is not enough: every matching row must be reviewed. Triage
+// each sample row; record a false positive (for example a postcode-like token in a stack trace)
+// with its itemId and the reason, and add its itemId to cleared_row_ids; then rerun. Repeat
+// until no row other than "(scanned)" remains. A true positive is a defect: raise it, and it
+// blocks sign-off until fixed and re-scanned.
 let window_start = datetime(2026-01-01T00:00:00Z);  // the test window, UTC
 let window_end = datetime(2026-01-01T02:00:00Z);
 let max_samples = 5;
+// itemIds triaged as false positives (recorded in the evidence with the reason): excluded so
+// that a rerun shows only the matches nobody has reviewed yet.
+let cleared_row_ids = dynamic([]);
 // The synthetic case details entered during the test (VALIDATION.md), matched as terms.
 let seeded_values = dynamic(["Okonkwo-DIAAT298", "HomeOfficeRespondent-DIAAT298", "HHJ-Blackwood-DIAAT298",
     "PrivateJudicialNote-DIAAT298", "AppellantStatesDIAAT298sentinel"]);
@@ -73,6 +79,7 @@ let scanned = union isfuzzy=true
         | project table = "(all)", column = "user_AuthenticatedId", row_id = itemId, text = user_AuthenticatedId)
     | where isnotempty(text);
 let hits = scanned
+    | where row_id !in (cleared_row_ids)
     | extend
         seeded_value = text has_any (seeded_values),
         email = text matches regex @"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63})*\.[A-Za-z]{2,24}",

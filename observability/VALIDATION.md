@@ -276,7 +276,11 @@ be agreed with QA and Security before the run:
 
 - a `(scanned)` row with `matches` > 0 for `traces`, `customEvents` and `requests` (an empty window
   proves nothing); and
-- no other rows. Any other row fails until each of its sample rows has been triaged.
+- no other rows, with every false positive listed in `cleared_row_ids`. A group's
+  `sample_row_ids` holds at most five of its matches, so clearing the samples is not enough:
+  every matching row must be reviewed. Triage the samples, add each false positive's `itemId` to
+  `cleared_row_ids`, and rerun. Repeat until no row other than `(scanned)` remains; the
+  `matches` count of each remaining group shows how many rows are still unreviewed.
 
 **Triage.** For each hit, look at that one row privately:
 
@@ -288,7 +292,8 @@ union traces, customEvents, exceptions, requests, dependencies
 Record the decision, not the content:
 
 - a **false positive** (for example a postcode-like token in a stack trace): record the `itemId`,
-  the table, column and check, and the reason;
+  the table, column and check, and the reason, and add the `itemId` to `cleared_row_ids` before
+  the next run;
 - a **true positive** is a defect: raise it, treat it as a potential security incident (tell
   Security), and it blocks sign-off until fixed and re-scanned.
 

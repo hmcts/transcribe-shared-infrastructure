@@ -65,6 +65,18 @@ TOKEN = re.compile(
     re.VERBOSE,
 )
 STRING = re.compile(r'"([^"]*)"')
+# `event = tostring(customDimensions["event"])`, then `event in ("x", ...)`: the alias's
+# literals are names too (hmcts-otel's event metric dimension, and the journey type).
+ALIAS = re.compile(
+    r'\b(?P<alias>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*tostring\(\s*customDimensions\[\s*"(?P<key>event|hmcts\.journey\.type)"\s*\]\s*\)'
+)
+KIND_BY_ALIASED_KEY = {"event": "event", "hmcts.journey.type": "journey"}
+
+
+def _alias_comparisons(alias: str) -> re.Pattern[str]:
+    return re.compile(
+        rf'\b{re.escape(alias)}\s*(?:==\s*(?P<one>"[^"]*")|in\s*\(\s*(?P<many>"[^"]*"(?:\s*,\s*"[^"]*")*)\s*\))'
+    )
 
 # DIAAT-285 (AC3): what an alert query may output, by kind. Counts, rates and measures:
 SAFE_ALERT_COLUMNS = {
@@ -114,14 +126,16 @@ AREA_TABLES = re.compile(r"\b(?:customEvents|requests|traces|dependencies|except
 def area_problems(name: str, code: str) -> list[str]:
     """An area's query filters every read of an area-carrying table on its own area.
 
-    Each read (a table name) must reach a hmcts.area reference before its statement ends
-    (the next ";", which closes a let, or the end), and the file must keep its own area:
-    ``area == "<area>"`` or ``area in (..., "<area>", ...)``.
+    Each read (a table name) must reach, before its statement ends (the next ";", which
+    closes a let, or the end), both a hmcts.area read and the own-area predicate
+    ``where area == "<area>"`` or ``where area in (..., "<area>", ...)``. A branch that only
+    reads the area, or filters on the other one, cannot be unioned or joined in unfiltered.
     """
     match = AREA_FILE.match(name)
     if match is None or not AREA_TABLES.search(code):
         return []
     area = "recording" if "recording" in match.group(0) else "dictation"
+    keeps = re.compile(rf'\|\s*where\s+area\s*(?:==\s*"{area}"|in\s*\([^)]*"{area}")')
     problems = []
     for table in AREA_TABLES.finditer(code):
         end = code.find(";", table.end())
@@ -130,9 +144,10 @@ def area_problems(name: str, code: str) -> list[str]:
             problems.append(
                 f"{table.group(0)} is read without an hmcts.area filter before its statement ends (decision 1)"
             )
-    keeps = re.compile(rf'\barea\s*(?:==\s*"{area}"|in\s*\([^)]*"{area}")')
-    if not keeps.search(code):
-        problems.append(f'an area\'s query must keep its own area: area == "{area}"')
+        elif not keeps.search(statement):
+            problems.append(
+                f'{table.group(0)} is read without `| where area == "{area}"` before its statement ends (decision 1)'
+            )
     return problems
 
 
@@ -188,6 +203,11 @@ def references(text: str) -> tuple[list[tuple[str, str]], list[str]]:
             found.append(("attribute", match["attribute"]))
         elif match["stage"] or match["stages"]:
             found.extend(("stage", n) for n in STRING.findall(match["stage"] or match["stages"]))
+    code = _code(text)
+    for alias in ALIAS.finditer(code):
+        kind = KIND_BY_ALIASED_KEY[alias["key"]]
+        for comparison in _alias_comparisons(alias["alias"]).finditer(code, alias.end()):
+            found.extend((kind, n) for n in STRING.findall(comparison["one"] or comparison["many"]))
     return found, problems
 
 
