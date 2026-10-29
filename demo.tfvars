@@ -5,3 +5,5 @@ entra_client_secret_source = {
   key_vault_name      = "central-app-reg-kv"
   secret_name         = "benchnotes-demo-secret"
 }
+
+alert_limit_reached = true

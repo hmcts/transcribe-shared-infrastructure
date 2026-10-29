@@ -44,6 +44,12 @@ variable "daily_data_cap_in_gb" {
   default     = 5
 }
 
+variable "alert_limit_reached" {
+  description = "Use a scheduled query rule for the daily-cap alert instead of an activity log alert. Set where the subscription has hit its limit of 100 activity log alerts."
+  type        = bool
+  default     = false
+}
+
 variable "product_group_name" {
   description = <<-EOT
     Display name of the product's AAD security group, given administrative
