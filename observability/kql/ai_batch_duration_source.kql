@@ -1,0 +1,17 @@
+// Where recording's metered audio seconds come from, daily (OBS-5). AI usage.
+//
+// Measure: recording jobs whose Speech usage was recorded, by the source of the duration.
+// Formula: sum(valueSum) of transcription.speech.usage.jobs per day, by
+//   speech.audio_duration_source: azure (the duration in Azure's results file, what it
+//   bills on), estimate (the duration given when the job was submitted), or none
+//   (neither known: nothing recorded on hmcts.speech.audio.duration).
+// Source: the counter transcription.speech.usage.jobs, one per succeeded recording job
+//   (Speech batch mode only: dictation uploads always have Azure's duration). The
+//   metric is recording's own, so it needs no area filter (metrics carry no hmcts.area).
+// Caveats: a high share of estimate or none makes the batch audio hours, and any
+//   allocation of cost by them, less exact.
+customMetrics
+| where name == "transcription.speech.usage.jobs"
+| extend source = tostring(customDimensions["speech.audio_duration_source"])
+| summarize jobs = sum(valueSum) by timestamp = bin(timestamp, 1d), source
+| order by timestamp asc, source asc

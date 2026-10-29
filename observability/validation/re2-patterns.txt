@@ -1,0 +1,9 @@
+# transcribe-api's RE2_PATTERNS (tests/unit/telemetry_scan.py): <name><TAB><pattern>. GENERATED.
+# prohibited_content_scan.kql must use each verbatim (tests/test_scan_patterns.py).
+email	[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63})*\.[A-Za-z]{2,24}
+uk_case_reference	(?:^|[^A-Za-z0-9])(?:[A-Za-z]{2}[/_ -]\d{5}[/_ -]\d{4}|UI-\d{4}-\d{6}|T\d{8}|[A-Z]{2}\d{2}[A-Z]\d{5})(?:$|[^0-9])
+sas_signature	(?i)(?:^|[^a-z0-9_])sig=[A-Za-z0-9%+/=]{8,}
+bearer_token	(?i)\bbearer\s+[A-Za-z0-9._~+/-]{8,}
+jwt	\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]*
+uk_postcode	\b(?:[A-PR-UWYZ][A-HK-Y]?\d[A-HJKPSTUW\d]?|GIR) ?\d[ABD-HJLNP-UW-Z]{2}\b
+ni_number	\b[A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z] ?\d{2} ?\d{2} ?\d{2} ?[A-D]\b

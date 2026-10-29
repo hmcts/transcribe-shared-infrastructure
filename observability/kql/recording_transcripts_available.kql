@@ -1,0 +1,22 @@
+// Transcripts available per day (DIAAT-283). Recording pipeline (Phase 2): transcript
+// availability.
+//
+// Measure: recording transcripts saved and readable.
+// Formula: count of transcript.available per day; average segments and speakers; where
+//   hmcts.area == "recording" (journey type prefix as fallback; dictation also emits
+//   transcript.available).
+// Source: transcript.available from the batch poller (transcribe-api-worker; one per
+//   job whose transcript was saved), with transcript.segment_count and
+//   transcript.speaker_count (counts only, never text or names). 100% of events (OD2).
+// Caveats: the sizes help spot empty or one-speaker transcripts; they are not quality.
+customEvents
+| where name == "transcript.available"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| summarize
+    transcripts = count(),
+    avg_segments = round(avg(todouble(customDimensions["transcript.segment_count"])), 0),
+    avg_speakers = round(avg(todouble(customDimensions["transcript.speaker_count"])), 1)
+    by day = bin(timestamp, 1d)
+| order by day asc

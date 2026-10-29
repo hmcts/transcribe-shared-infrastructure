@@ -1,0 +1,27 @@
+// Alert query (DIAAT-205, new; DIAAT-285 rules): live dictation sessions warned that no
+// speech was captured in the alert window. Replaces the browser Sentry alert on
+// "dictation.no_speech_warning" (the browser no longer reports to Sentry).
+//
+// Source (browser, OBS-4; transcribe-web lib/dictation-session.ts, relayed by
+// transcribe-api's POST /api/telemetry): "dictation.no_speech_warning" - recording has
+// run for dictation.elapsed_seconds with no captured speech (microphone muted or wrong
+// device, or Speech returning nothing).
+// Area: dictation only (DIAAT-205, decision 1). Relayed browser events carry no hmcts.area,
+// so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
+// Every event of the "dictation.session" journey counts the session as active.
+// Output: failures = distinct sessions warned (hmcts.journey.id); failed_pct = 100 *
+// failures / active sessions (context only). No code dimension: the event has none.
+// Suggested rule (provisional): measure failures, Total, GreaterThanOrEqual 5, window
+// PT30M, frequency PT10M, severity 2, no dimensions. Higher than speech-unhealthy's 3:
+// one user's microphone is often the cause, so only several sessions at once point to
+// a service (Speech) problem.
+customEvents
+| where tostring(customDimensions["hmcts.journey.type"]) == "dictation.session"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend journey_id = tostring(customDimensions["hmcts.journey.id"])
+| summarize sessions = dcount(journey_id),
+    failures = dcountif(journey_id, name == "dictation.no_speech_warning")
+| extend failed_pct = round(100.0 * failures / sessions, 1)
+| project failures, failed_pct

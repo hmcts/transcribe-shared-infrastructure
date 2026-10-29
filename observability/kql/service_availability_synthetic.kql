@@ -1,0 +1,16 @@
+// Synthetic availability (DIAAT-277): Application Insights standard web tests, per test
+// and day.
+//
+// Formula: availability % = 100 * successful runs / runs, per test per day. Every
+// location's run counts once. A run fails on a non-200 status, a timeout, a failed
+// content match or an SSL problem (the web test's validation rules); a redirect to
+// sign-in is a failure, not a pass.
+// Target: 99% or 99.5% per month, still to be confirmed (DIAAT-277 AC3).
+availabilityResults
+// success is "1"/"0" (a string in some schemas, a bool in others): compare as text.
+| extend ok = tostring(success) in ("1", "true", "True")
+| summarize runs = sum(itemCount), failed = sumif(itemCount, not(ok))
+    by timestamp = bin(timestamp, 1d), test = name
+| extend availability_pct = round(100.0 * (runs - failed) / runs, 3)
+| project timestamp, test, availability_pct, runs, failed
+| order by timestamp asc, test asc

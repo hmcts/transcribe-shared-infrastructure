@@ -1,0 +1,15 @@
+// ALERT (DIAAT-285): stuck recording jobs.
+//
+// Measure: the peak of transcription.jobs.stuck in the window, by job.state (waiting =
+//   never started by Azure Speech; running = started, not finished). Max across
+//   replicas: each reports the database-wide value, never sum. Exported by
+//   transcribe-api-worker; recording-only metric, so no area filter: metric dimensions
+//   do not carry hmcts.area (decision 1).
+// Fires when stuck > alert_thresholds.stuck_jobs (0). Thresholds for "stuck":
+//   JOB_STUCK_WAITING_SECONDS and JOB_STUCK_RUNNING_SECONDS in the API's settings.
+// Output (AC3): the state and a count. Job IDs: recording_stuck_jobs.kql.
+customMetrics
+| where name == "transcription.jobs.stuck"
+| extend state = tostring(customDimensions["job.state"])
+| summarize stuck = max(value) by state
+| project state, stuck

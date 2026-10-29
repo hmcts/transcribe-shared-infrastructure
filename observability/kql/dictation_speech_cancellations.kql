@@ -1,0 +1,33 @@
+// Speech cancellations by reason and error code (DIAAT-284; events from OBS-4:
+// DIAAT-278 / DIAAT-300), over the time range.
+//
+// Run against the environment's Application Insights resource (customEvents; one per
+// environment, no environment split). No parameters: the time range comes from the caller.
+//
+// Sources (browser, transcribe-web lib/dictation-session.ts, relayed by transcribe-api's
+// POST /api/telemetry):
+//   "speech.canceled"  - the Azure Speech SDK canceled event: speech.cancel_reason
+//                        (Error, EndOfStream, CancelledByUser, StartFailed, Unknown) and
+//                        speech.error_code (SDK CancellationErrorCode, e.g. ConnectionFailure,
+//                        AuthenticationFailure, TooManyRequests, ServiceTimeout).
+//   "speech.unhealthy" - Speech sessions collapsing repeatedly (dictation.collapses_in_window
+//                        in dictation.window_seconds); it fails the dictation session with
+//                        "speech.unhealthy".
+// Area: dictation only (DIAAT-205, decision 1). Relayed browser events carry no hmcts.area,
+// so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
+// Formula, per event, reason and error code:
+//   events   = number of events
+//   sessions = distinct dictation sessions affected (hmcts.journey.id; dcount, ~1% error)
+// Caveats: EndOfStream and CancelledByUser are usually benign; Error with an error code is
+// the Speech failure signal. Browser loss makes counts a lower bound.
+customEvents
+| where name in ("speech.canceled", "speech.unhealthy")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend reason = tostring(customDimensions["speech.cancel_reason"]),
+    error_code = tostring(customDimensions["speech.error_code"]),
+    journey_id = tostring(customDimensions["hmcts.journey.id"])
+| summarize events = sum(itemCount), sessions = dcount(journey_id), last_seen = max(timestamp)
+    by event = name, reason, error_code
+| order by events desc

@@ -1,0 +1,96 @@
+// Azure Speech's daily batch cost, allocated to recording hearings by usage share
+// (OBS-5). AI usage: cost. Shown only when billing_export_configured = true. The split
+// by feature, for both areas and every AI service, is cost_allocation.kql.
+//
+// ============================== PLACEHOLDER: BILLING EXPORT ==============================
+// The source is the Azure Cost Management export that PlatOps is expected to provide.
+// It does not exist yet. Terraform replaces the two tokens below when
+// billing_export_configured = true:
+//   BILLING_EXPORT_TABLE  <- var.billing_export_table: a KQL table expression for the
+//                            export, e.g. workspace("<workspace>").AzureCostExport_CL
+//   SPEECH_RESOURCE_ID    <- the Azure Speech account of this environment
+//                            (transcribe-shared-infrastructure ai-services.tf).
+// Expected columns (Cost Management "actual cost" export, one row per meter per
+// resource per day). If the export names them differently (a custom log table adds
+// _s, _d, _t suffixes), rename them in billing_export_table with `| project-rename`:
+//   Date                   datetime  the usage day (UTC)
+//   ResourceId             string    the Azure resource ID (case-insensitive)
+//   CostInBillingCurrency  real      the actual cost of that meter that day
+//   BillingCurrency        string    e.g. GBP
+// ==========================================================================================
+//
+// Measure: each day's batch Speech cost split by each hearing's share of that day's
+//   recording audio seconds. No price list: the cost is what Azure billed.
+// Formula: daily_cost = sum(CostInBillingCurrency) of the Speech account's batch meters
+//   per day; allocated_cost = daily_cost * seconds / that day's total seconds, per
+//   hearing (job.finished speech.audio_duration_s, else the upload's
+//   audio.duration_seconds; the hearing is the upload's hmcts.journey.parent_id, as in
+//   recording_ai_hearing_share.kql).
+// Source: the billing export (above); the events job.finished and upload.completed in
+//   the recording area (both are also emitted by dictation: hmcts.area, else the journey
+//   type's prefix).
+// Caveats: the Speech account serves both areas on CNP (live dictation, dictation
+//   uploads, recording jobs), so only meters with "Batch" in their name are recording's:
+//   check the export's meter names. Cost Management data arrives a day or more late; a
+//   day with cost but no recorded usage shows as "(unallocated)". CNP does not send
+//   hearing IDs yet: until it does, every upload is its own hearing.
+let cost_export = BILLING_EXPORT_TABLE;
+let speech_resource_id = "SPEECH_RESOURCE_ID";
+let daily_cost = cost_export
+    | where tolower(tostring(ResourceId)) == tolower(speech_resource_id)
+    | where tostring(MeterName) has "Batch"
+    | summarize
+        cost = sum(todouble(CostInBillingCurrency)),
+        currency = take_any(tostring(BillingCurrency))
+        by day = bin(todatetime(Date), 1d);
+let recording = customEvents
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "recording";
+let uploads = recording
+    | where name == "upload.completed"
+    | extend
+        upload_id = tostring(customDimensions["hmcts.journey.id"]),
+        hearing_id = tostring(customDimensions["hmcts.journey.parent_id"]),
+        upload_s = todouble(customDimensions["audio.duration_seconds"])
+    | summarize arg_max(timestamp, hearing_id, upload_s) by upload_id
+    | project upload_id, hearing_id, upload_s;
+let by_hearing = recording
+    | where name == "job.finished"
+    | where tostring(customDimensions["hmcts.outcome"]) == "success"
+    | extend
+        upload_id = tostring(customDimensions["hmcts.journey.parent_id"]),
+        job_s = todouble(customDimensions["speech.audio_duration_s"])
+    | join kind=leftouter uploads on upload_id
+    | extend
+        seconds = coalesce(job_s, upload_s),
+        key = case(
+            isnotempty(hearing_id), hearing_id,
+            isnotempty(upload_id1), strcat("upload:", upload_id),
+            "(upload not in range)")
+    | where isnotnull(seconds)
+    | summarize seconds = sum(seconds) by day = bin(timestamp, 1d), key
+    | extend allocation = "hearing";
+let usage = by_hearing;
+let totals = usage | summarize total_seconds = sum(seconds) by day, allocation;
+let allocated = usage
+    | join kind=inner totals on day, allocation
+    | join kind=inner daily_cost on day
+    | extend share = seconds / total_seconds
+    | project day, allocation, key, seconds, share, cost, currency;
+// Days the bill has cost but no usage was recorded, per allocation.
+let unallocated = daily_cost
+    | extend allocation = "hearing"
+    | join kind=leftanti totals on day, allocation
+    | extend key = "(unallocated)", seconds = 0.0, share = 1.0
+    | project day, allocation, key, seconds, share, cost, currency;
+union allocated, unallocated
+| project
+    day,
+    allocation,
+    key,
+    audio_hours = round(seconds / 3600.0, 3),
+    share_pct = round(100.0 * share, 2),
+    allocated_cost = round(cost * share, 2),
+    currency
+| order by day asc, allocation asc, allocated_cost desc

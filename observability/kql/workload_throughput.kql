@@ -1,0 +1,25 @@
+// Throughput from the unsampled event counter (DIAAT-284), hourly, both areas.
+//
+// Run against the environment's Application Insights resource (customMetrics). No
+// parameters: the time range comes from the caller.
+//
+// Source: the hmcts.events counter, incremented by hmcts-otel for every event recorded
+// (server and relayed browser events), dimension "event" = the event name:
+//   "dictation.session_ended"  - dictation sessions finished;
+//   "submission.completed"     - submissions that produced a document;
+//   "document.available"       - documents stored and linked;
+//   "job.finished"             - jobs finished, any outcome: dictation uploads AND
+//                                recording batch jobs (the metric carries no area: for
+//                                one area use the events, e.g. dictation_workload_upload_jobs.kql);
+//   "transcription.completed"  - Azure Speech transcriptions of uploaded audio.
+// Formula: events per hour = sum(value) per hour and event.
+// Caveats: never sampled (OD2). Assumes delta temporality (the App Insights exporter's
+// default for counters). "submission.completed" here includes any non-dictation use of the
+// stage name; the event-based counts (dictation_workload_daily_volume.kql) filter by area.
+customMetrics
+| where name == "hmcts.events"
+| extend event = tostring(customDimensions["event"])
+| where event in ("dictation.session_ended", "submission.completed", "document.available",
+    "job.finished", "transcription.completed")
+| summarize events = sum(value) by timestamp = bin(timestamp, 1h), event
+| order by timestamp asc, event asc

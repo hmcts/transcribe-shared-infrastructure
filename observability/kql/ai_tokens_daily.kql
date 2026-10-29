@@ -1,0 +1,29 @@
+// AI usage: LLM tokens by provider, model and feature per day (OBS-5).
+//
+// Run against the environment's Application Insights resource (customMetrics). No
+// parameters: the time range comes from the caller. Covers both areas; metrics carry no
+// hmcts.area, so the feature and mode tell them apart.
+//
+// Source: the gen_ai.client.token.usage histogram (hmcts-otel; OpenTelemetry GenAI
+// semantic conventions), one point per token type per model call, recorded for every
+// litellm call by the callback transcribe-api registers (runtime/telemetry.py):
+//   gen_ai.provider.name  - e.g. azure.ai.openai (Azure OpenAI and Grok), gcp.vertex_ai;
+//   gen_ai.request.model  - the model asked for, without the provider prefix;
+//   gen_ai.token.type     - "input" or "output" (priced differently);
+//   hmcts.ai.feature      - the product feature (ai_feature() at each LLM call site);
+//   hmcts.ai.fallback     - true for a fallback model (Grok or GPT-4o after Gemini, or a
+//                           smaller Gemini model after the requested one failed).
+// Formula, per day: tokens = sum(valueSum); calls = sum(valueCount) (one point per call
+// and token type).
+// Caveats: usage only, never cost (cost_allocation.kql splits the bill by usage share).
+// Failed calls count 0 tokens unless the provider reported usage. Never sampled.
+customMetrics
+| where name == "gen_ai.client.token.usage"
+| extend provider = tostring(customDimensions["gen_ai.provider.name"]),
+    model = tostring(customDimensions["gen_ai.request.model"]),
+    feature = tostring(customDimensions["hmcts.ai.feature"]),
+    token_type = tostring(customDimensions["gen_ai.token.type"]),
+    fallback = tobool(customDimensions["hmcts.ai.fallback"])
+| summarize tokens = sum(valueSum), calls = sum(valueCount)
+    by timestamp = bin(timestamp, 1d), provider, model, feature, token_type, fallback
+| order by timestamp asc, tokens desc

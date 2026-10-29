@@ -1,0 +1,39 @@
+// Stage runs and average duration from the unsampled metric (DIAAT-284; DIAAT-276 / 279;
+// DIAAT-205: both areas), daily, per area, stage, journey and outcome.
+//
+// Run against the environment's Application Insights resource (customMetrics; one per
+// environment, no environment split). No parameters: the time range comes from the caller.
+//
+// Cross-area (service_*): every stage() in transcribe-api records it, in both areas and
+// both services (transcribe-api, transcribe-api-worker).
+// Source: the hmcts.stage.duration histogram (seconds), one measurement per stage run,
+// with dimensions hmcts.stage, hmcts.outcome, hmcts.error.code ("none" on success) and
+// hmcts.journey.type ("none" outside a journey). Stages:
+//   dictation - "speech_token", "submission", "document_generation" (live dictation);
+//               "upload", "transcription", "speaker_naming", "minutes_generation",
+//               "title_generation", "notification" (uploaded audio); "minutes_edit";
+//   recording - "upload", "speech_submission", "result_processing", "results_retrieval",
+//               "transcript_postprocessing", "transcript_persistence".
+// Area: metrics carry no hmcts.area (decision 1), so area = the journey type's prefix
+// ("dictation.*", "recording.*"). A stage outside a journey has journey "none": the
+// dictation-only "speech_token" (GET /api/get-speech-token) and "minutes_edit" are
+// counted as dictation; any other such run has area "none".
+// Formula: runs = sum(valueCount); avg_s = sum(valueSum) / sum(valueCount);
+//   max_s = max(valueMax).
+// Caveat: never sampled (OD2), but no percentiles (no buckets in App Insights): p50/p95
+// come from the stage events (dictation_document_generation.kql,
+// dictation_submissions.kql).
+customMetrics
+| where name == "hmcts.stage.duration"
+| extend stage = tostring(customDimensions["hmcts.stage"]),
+    journey = tostring(customDimensions["hmcts.journey.type"]),
+    outcome = tostring(customDimensions["hmcts.outcome"])
+| extend area = case(
+        journey != "none" and isnotempty(journey), tostring(split(journey, ".")[0]),
+        stage in ("speech_token", "minutes_edit"), "dictation",
+        "none")
+| summarize runs = sum(valueCount), sum_s = sum(valueSum), max_s = max(valueMax)
+    by timestamp = bin(timestamp, 1d), area, stage, journey, outcome
+| extend avg_s = round(sum_s / runs, 3), max_s = round(max_s, 3)
+| project timestamp, area, stage, journey, outcome, runs, avg_s, max_s
+| order by timestamp asc, area asc, stage asc, outcome asc

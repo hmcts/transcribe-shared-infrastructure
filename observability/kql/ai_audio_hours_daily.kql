@@ -1,0 +1,37 @@
+// AI usage: audio hours sent to Azure Speech, by mode and feature per day (OBS-5).
+//
+// Usage only: no prices or cost (cost_allocation.kql splits the bill by usage share).
+// Two sources:
+//   basis "server": the hmcts.speech.audio.duration counter (seconds, hmcts-otel),
+//     recorded by transcribe-api after Azure transcribed the audio: the duration Azure
+//     reports (what it bills), else the measured length or the duration given at
+//     submission (an estimate; see ai_batch_duration_source.kql). By mode:
+//       fast  - dictation uploads (feature "upload_transcription"). Outcome "failure":
+//               transcribed (billed) but no speech detected; "error": a 2xx response
+//               without its phrases. Requests Azure rejected or failed are not recorded;
+//       batch - recording jobs (feature "batch_transcription"), once per job whose
+//               transcript was saved. Jobs that fail in Azure record no usage.
+//   basis "browser_estimate": live dictation streams audio from the browser straight to
+//     Azure Speech, so the API never sees it. Its usage is the Speech session length the
+//     browser reports on "speech.session_stopped" (the hmcts.event.duration metric,
+//     dimensions event and source = browser), for events the relay accepted. Mode
+//     "realtime", feature "dictation".
+// Formula, per day: audio_hours = sum(valueSum) / 3600.
+// Caveats: the browser figure is an estimate. A Speech session still running when the
+// dictation is submitted or its page is left is stopped then and counted; one whose page
+// is killed counts up to its last stored end, once a later page sends it, else it is
+// missing (lower bound). A recording job processed twice is counted twice.
+let metered = customMetrics
+    | where name == "hmcts.speech.audio.duration"
+    | extend mode = tostring(customDimensions["hmcts.speech.mode"]),
+        feature = tostring(customDimensions["hmcts.ai.feature"]),
+        outcome = tostring(customDimensions["hmcts.outcome"]),
+        basis = "server";
+let dictation = customMetrics
+    | where name == "hmcts.event.duration"
+    | where tostring(customDimensions["event"]) == "speech.session_stopped"
+        and tostring(customDimensions["source"]) == "browser"
+    | extend mode = "realtime", feature = "dictation", outcome = "success", basis = "browser_estimate";
+union metered, dictation
+| summarize audio_hours = round(sum(valueSum) / 3600.0, 3) by timestamp = bin(timestamp, 1d), mode, feature, outcome, basis
+| order by timestamp asc, mode asc, feature asc

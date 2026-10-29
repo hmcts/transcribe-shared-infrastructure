@@ -1,0 +1,51 @@
+// Journey availability, recording jobs, by failure source (DIAAT-277), by day and service.
+// The cross-area figure is service_availability_journey.kql; this one keeps recording's
+// breakdown by hmcts.failure.source.
+// Did transcription jobs reach "transcript available"?
+//
+// Source: the job.finished event (DIAAT-281/282/283), emitted once per job when it
+// reaches a terminal state, with hmcts.outcome and, when it did not succeed,
+// hmcts.failure.source (application, queue or dependency) and hmcts.error.code.
+// A successful job.finished follows transcript.available.
+//
+// Formula, per day and service:
+//   availability % = 100 * succeeded / (succeeded + unavailable)
+//   succeeded      = job.finished with hmcts.outcome == "success"
+//   unavailable    = job.finished with hmcts.outcome == "error", whatever the source:
+//                    application (our code, database or blob storage), dependency
+//                    (Azure Speech) or queue (never processed). A missing source counts
+//                    as unavailable too.
+// Exclusions:
+//   - Client failures (hmcts.outcome == "failure") are EXCLUDED from both sides, like
+//     4xx in endpoint availability: the caller's request was rejected (an HTTP 4xx
+//     raised for it, hmcts-otel's client_failure_code rule). They carry
+//     hmcts.failure.source "application" only because every non-Speech cause is
+//     labelled so; they are counted in client_failures for visibility.
+//   - "cancelled" outcomes are excluded.
+//   - Jobs that never finish have no job.finished: they are not in this figure. They
+//     raise job.stuck and the transcription.jobs.stuck gauge instead (recording_stuck_jobs.kql).
+// Target: 99% or 99.5% per month, STILL TO BE CONFIRMED.
+//
+// Parameter-free: run it against an environment's Application Insights resource. The
+// time range comes from the caller.
+customEvents
+| where name == "job.finished"
+// job.finished is also dictation's: the recording area only (hmcts.area, else the
+// journey type's prefix).
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| extend
+    outcome = tostring(customDimensions["hmcts.outcome"]),
+    source = tostring(customDimensions["hmcts.failure.source"])
+| summarize
+    succeeded = countif(outcome == "success"),
+    unavailable = countif(outcome == "error"),
+    failed_application = countif(outcome == "error" and source == "application"),
+    failed_dependency = countif(outcome == "error" and source == "dependency"),
+    failed_queue = countif(outcome == "error" and source == "queue"),
+    client_failures = countif(outcome == "failure")
+    by day = bin(timestamp, 1d), cloud_RoleName
+| where succeeded + unavailable > 0
+| extend availability_pct = round(100.0 * succeeded / (succeeded + unavailable), 3)
+| order by day asc, cloud_RoleName asc

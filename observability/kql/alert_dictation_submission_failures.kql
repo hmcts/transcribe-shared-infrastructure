@@ -1,0 +1,21 @@
+// Alert query (DIAAT-285): dictation submissions that failed on the server side in the
+// alert window, by code. Used by the "submission-failures" alert (measure: failures).
+//
+// Source: stage("submission") in transcribe-api src/transcribe_api/api/routes_dictation.py
+// (POST /api/live-transcription/submission; dictation_submissions.kql),
+// "submission.failed" with hmcts.outcome "error" (client rejections are "failure" and
+// are left out). Codes include "storage.write_failed" and "document.store_failed":
+// the storage and database failures of the dictation path.
+// Area: dictation only (DIAAT-205, decision 1): hmcts.area, or the journey type's prefix.
+// Output: error_code (hmcts.error.code), failures (failed submissions).
+customEvents
+| where name == "submission.failed"
+| where tostring(customDimensions["hmcts.journey.type"]) == "dictation.submission"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend outcome = tostring(customDimensions["hmcts.outcome"]),
+    error_code = tostring(customDimensions["hmcts.error.code"])
+| where outcome == "error"
+| summarize failures = sum(itemCount) by error_code
+| project error_code, failures

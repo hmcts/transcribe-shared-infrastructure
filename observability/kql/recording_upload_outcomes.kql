@@ -1,0 +1,29 @@
+// Uploads by outcome and error code (DIAAT-280). Recording pipeline (Phase 2): upload.
+//
+// Measure: recording uploads accepted and rejected, and why.
+// Formula: uploads = count of upload.completed + upload.failed, by hmcts.outcome and
+//   hmcts.error.code, where hmcts.area == "recording" (journey type prefix as fallback;
+//   dictation's upload stage emits the same events); share % = 100 * uploads / all
+//   recording uploads in the time range.
+// Source: the "upload" stage of the recording API (hmcts-otel stage(): one
+//   upload.completed or upload.failed per POST /api/v1/uploads on transcribe-api).
+//   Events are logs, kept at 100% (OD2: no trace sampling).
+// Codes: upload.unsupported_format, upload.too_large, upload.undecodable (outcome
+//   failure: the file was rejected); storage.write_failed (outcome error: the blob write
+//   failed); unhandled.<Type> (error); http.<4xx> (failure).
+// Caveats: a rejected file also emits upload.validation_failed with the same code; it is
+//   not counted again. Requests refused before the handler runs (401, rate limit 429)
+//   have no stage events: see requests / service_availability_endpoint.kql.
+let upload_events = customEvents
+    | where name in ("upload.completed", "upload.failed")
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "recording"
+    | extend
+        outcome = tostring(customDimensions["hmcts.outcome"]),
+        error_code = tostring(customDimensions["hmcts.error.code"]);
+let total = toscalar(upload_events | count);
+upload_events
+| summarize uploads = count() by outcome, error_code = iff(isempty(error_code), "none", error_code)
+| extend share_pct = round(100.0 * uploads / total, 1)
+| order by uploads desc

@@ -1,0 +1,10 @@
+// Exceptions by type (DIAAT-277), per service and area. Unhandled exceptions and
+// exceptions recorded on failed spans: hmcts-otel exports the type and a stack built
+// from the exception object, never the message, so none is shown here.
+// Area: hmcts.area where the exception carries it (the request or job it came from),
+// else the journey type's prefix; empty for shared code.
+exceptions
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| summarize exceptions = sum(itemCount), last_seen = max(timestamp) by type, cloud_RoleName, area
+| order by exceptions desc

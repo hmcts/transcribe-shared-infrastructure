@@ -1,0 +1,25 @@
+// ALERT (DIAAT-285): failed recording jobs above a rate, by failure source.
+//
+// Measure: failed_pct = 100 * jobs that ended in error from a source / all jobs that
+//   finished in the window. Source: counter transcription.jobs.finished, emitted only by
+//   the recording batch poller (transcribe-api-worker), so no area filter: metric
+//   dimensions do not carry hmcts.area (decision 1).
+//   hmcts.failure.source: application (our code, database, blob storage), dependency
+//   (Azure Speech) or queue (never processed). Outcome "failure" (the caller's audio or
+//   request was rejected) is excluded: not actionable by the service team.
+// Fires when failed_pct > alert_thresholds.failed_jobs_pct, for any source.
+// Parameter (prepended by Terraform as a let): min_jobs, the fewest finished jobs in
+//   the window for a rate to count. To run in Logs: prepend `let min_jobs = 5;`.
+// Output (AC3): the source, counts and a percentage.
+let finished = customMetrics
+    | where name == "transcription.jobs.finished"
+    | extend
+        outcome = tostring(customDimensions["hmcts.outcome"]),
+        source = tostring(customDimensions["hmcts.failure.source"]);
+let total = toscalar(finished | summarize sum(value));
+finished
+| where outcome == "error"
+| summarize failed = sum(value) by source
+| where total >= min_jobs
+| extend failed_pct = round(100.0 * failed / total, 1)
+| project source, failed, failed_pct

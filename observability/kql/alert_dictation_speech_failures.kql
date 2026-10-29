@@ -1,0 +1,25 @@
+// Alert query (DIAAT-285): live dictation sessions hit by Azure Speech failures in the
+// alert window, by Speech error code. Used by the "speech-failures" alert (measure:
+// failures; dimension: error_code; heritage threshold 3 sessions per code over 30 min).
+//
+// Source (browser, OBS-4, dictation_speech_cancellations.kql; transcribe-web
+// lib/dictation-session.ts, relayed by transcribe-api's POST /api/telemetry):
+//   "speech.canceled" with speech.cancel_reason Error or StartFailed (EndOfStream and
+//   CancelledByUser are normal ends), and "speech.unhealthy" (sessions collapsing
+//   repeatedly). speech.error_code tells connection failures (ConnectionFailure),
+//   throttling (TooManyRequests) and timeouts (ServiceTimeout) apart.
+// Area: dictation only (DIAAT-205, decision 1). Relayed browser events carry no hmcts.area,
+// so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
+// failures = distinct dictation sessions affected (hmcts.journey.id), per error code.
+// AC3: speech.cancel_reason (an enum) and speech.error_code (a Speech SDK error code
+// name) are controlled values, safe in an alert (tests/check_kql_names.py).
+customEvents
+| where name == "speech.unhealthy"
+    or (name == "speech.canceled" and tostring(customDimensions["speech.cancel_reason"]) in ("Error", "StartFailed"))
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend error_code = tostring(customDimensions["speech.error_code"]),
+    journey_id = tostring(customDimensions["hmcts.journey.id"])
+| summarize failures = dcount(journey_id) by error_code
+| project error_code, failures

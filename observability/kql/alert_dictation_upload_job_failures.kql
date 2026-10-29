@@ -1,0 +1,22 @@
+// Alert query (DIAAT-285): uploaded-audio jobs that ended in error in the alert window,
+// by code. Used by the "upload-job-failures" alert (measure: failures).
+//
+// Source: "job.finished" (DIAAT-276), one per job, emitted by the dictation upload
+// poller in transcribe-api-worker, with hmcts.outcome "error" and hmcts.error.code
+// "<step>.failed" (e.g. "transcription.failed": the Azure Speech request failed, timed
+// out or was throttled; "minutes_generation.failed") or the most significant degraded
+// part ("minutes.failed", "document.not_generated", "title.failed",
+// "notification.email_failed"). "failure" (the user's file was rejected) is left out.
+// Area: dictation only (DIAAT-205, decision 1). job.finished is also recording's batch
+// job event, so the area filter is required: hmcts.area, or the journey type's prefix.
+// Output: error_code (hmcts.error.code), failures (jobs ended in error).
+customEvents
+| where name == "job.finished"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend outcome = tostring(customDimensions["hmcts.outcome"]),
+    error_code = tostring(customDimensions["hmcts.error.code"])
+| where outcome == "error"
+| summarize failures = sum(itemCount) by error_code
+| project error_code, failures

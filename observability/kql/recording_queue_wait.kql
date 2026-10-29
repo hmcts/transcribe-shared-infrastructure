@@ -1,0 +1,27 @@
+// Queue wait p50/p95 by day (DIAAT-281). Recording pipeline (Phase 2): queue.
+//
+// Measure: time from job created (upload complete, row inserted) to Azure Speech
+//   starting to process it.
+// Formula: p50 and p95 of hmcts.duration_ms / 60000 on speech.job_running, per day, in
+//   minutes, where hmcts.area == "recording" (journey type prefix as fallback). jobs =
+//   number of speech.job_running events.
+// Source: speech.job_running (one per job, when the batch poller in
+//   transcribe-api-worker first sees Running; its duration is the queue wait). 100% of
+//   events (OD2). The unsampled metric transcription.job.duration (phase queue_wait)
+//   gives count/avg/max: see recording_job_duration_metric.kql.
+// Caveats: a job Azure finishes between two polls is never seen Running, so it has no
+//   speech.job_running and is not in this figure. Includes our submission call and
+//   up to one poll interval (30 s) of poll lag.
+customEvents
+| where name == "speech.job_running"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| extend minutes = todouble(customDimensions["hmcts.duration_ms"]) / 60000.0
+| where isnotnull(minutes)
+| summarize
+    p50_min = round(percentile(minutes, 50), 1),
+    p95_min = round(percentile(minutes, 95), 1),
+    jobs = count()
+    by day = bin(timestamp, 1d)
+| order by day asc

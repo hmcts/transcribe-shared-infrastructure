@@ -1,0 +1,22 @@
+// ALERT (OBS-5): LLM token usage spike, both areas.
+//
+// Measure: spike_ratio = LLM tokens in the last 24 hours / the 24 hours before (or
+//   min_baseline_tokens, whichever is larger), by hmcts.ai.feature (minutes, titles,
+//   documents, recording post-processing: whatever ai_feature() each call site names).
+//   Source: gen_ai.client.token.usage, all models, input and output. Usage, never cost.
+// Fires when spike_ratio > alert_thresholds.ai_usage_spike_factor (3).
+// Previous day, not 7 days: a log alert reads at most 2 days. The 7-day view is
+//   ai_usage_trend.kql.
+// Parameter (prepended by Terraform as a let): min_baseline_tokens. To run in Logs over
+//   the last 2 days: prepend `let min_baseline_tokens = 10000;`.
+// Output (AC3): the feature (a controlled code), token counts and the ratio.
+customMetrics
+| where name == "gen_ai.client.token.usage"
+| where timestamp > ago(2d)
+| extend feature = tostring(customDimensions["hmcts.ai.feature"])
+| summarize
+    tokens = sumif(valueSum, timestamp > ago(1d)),
+    baseline_tokens = sumif(valueSum, timestamp <= ago(1d))
+    by feature
+| extend spike_ratio = round(tokens / max_of(baseline_tokens, todouble(min_baseline_tokens)), 2)
+| project feature, tokens, baseline_tokens, spike_ratio

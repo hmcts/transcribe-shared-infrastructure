@@ -1,0 +1,15 @@
+// ALERT (DIAAT-285): Azure Speech timeouts or throttling in recording.
+//
+// Measure: failed Azure Speech batch calls in the window with hmcts.error.code
+//   speech.timeout (no response in time) or speech.throttled (HTTP 429), by code.
+// Source: counter transcription.speech.call.failures (DIAAT-282), emitted only by the
+//   recording batch client, so no area filter: metric dimensions do not carry
+//   hmcts.area (decision 1). Counts calls, not jobs: retries count again.
+// Fires when failures > alert_thresholds.speech_timeouts_throttling.
+// Output (AC3): the code and a count.
+customMetrics
+| where name == "transcription.speech.call.failures"
+| extend error_code = tostring(customDimensions["hmcts.error.code"])
+| where error_code in ("speech.timeout", "speech.throttled")
+| summarize failures = sum(value) by error_code
+| project error_code, failures

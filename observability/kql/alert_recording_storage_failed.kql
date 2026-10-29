@@ -1,0 +1,28 @@
+// ALERT (DIAAT-285): database or blob writes failed in the recording pipeline.
+//
+// Measure: job.storage_failed events (after Azure Speech, in transcribe-api-worker:
+//   transcript.save, job.mark_failed, job.mark_needs_cleanup, blob.mark_failed; codes
+//   storage.db_unavailable, storage.db_rejected, storage.db_failed,
+//   storage.blob_failed), plus failed upload blob writes (upload.failed with
+//   storage.write_failed, POST /api/v1/uploads) as operation upload.blob_write; by
+//   operation and code. Both keep hmcts.area == "recording" (journey type prefix as
+//   fallback): dictation's upload stage also emits upload.failed with
+//   storage.write_failed.
+// Fires when failures > alert_thresholds.storage_failures (0).
+// Output (AC3): the operation, the code and a count.
+union
+    (customEvents
+    | where name == "job.storage_failed"
+    | extend
+        operation = tostring(customDimensions["storage.operation"]),
+        error_code = tostring(customDimensions["hmcts.error.code"])),
+    (customEvents
+    | where name == "upload.failed"
+    | extend error_code = tostring(customDimensions["hmcts.error.code"])
+    | where error_code == "storage.write_failed"
+    | extend operation = "upload.blob_write")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| summarize failures = count() by operation, error_code
+| project operation, error_code, failures

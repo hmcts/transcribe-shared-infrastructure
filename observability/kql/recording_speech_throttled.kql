@@ -1,0 +1,13 @@
+// Azure Speech throttling, hourly (DIAAT-282). Recording pipeline (Phase 2): Speech.
+//
+// Measure: batch calls Azure Speech refused with HTTP 429, the approaching-limit signal.
+// Formula: sum(value) of transcription.speech.throttled per hour, by speech.operation.
+// Source: counter transcription.speech.throttled, emitted only by the recording batch
+//   client, so no area filter: metric dimensions do not carry hmcts.area (decision 1).
+//   Never sampled (OD2). The Retry-After Azure sent is on the job.retried and
+//   job.poll_failed events (speech.retry_after_s).
+// Caveats: no rows means no throttling, not missing data.
+customMetrics
+| where name == "transcription.speech.throttled"
+| summarize throttled = sum(value) by bin(timestamp, 1h), operation = tostring(customDimensions["speech.operation"])
+| order by timestamp asc

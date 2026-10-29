@@ -1,0 +1,57 @@
+// Share of recording's Azure Speech audio hours per hearing (OBS-5). AI usage.
+//
+// Measure: each hearing's audio hours and its share of all recording audio hours in the
+//   period: the share of the Speech batch bill it accounts for.
+// Formula: per succeeded recording job, seconds = speech.audio_duration_s on job.finished
+//   (what was recorded on hmcts.speech.audio.duration), else the upload's
+//   audio.duration_seconds; summed per hearing; share_pct = 100 * hearing / total.
+//   Hearing: the upload's hmcts.journey.parent_id (the hearing ID, one per hearing,
+//   shared by its files), else the upload itself ("upload:<id>": a file sent without a
+//   hearing ID). The job's hmcts.journey.parent_id is its upload.
+// Source: events job.finished (hmcts.outcome success) and upload.completed, both also
+//   emitted by dictation: filtered to the recording area (hmcts.area, else the journey
+//   type's prefix). Metrics carry no journey, so per-hearing figures come from events.
+// Caveats: CNP does not send hearing IDs yet (X-Hearing-Id, pending the header names):
+//   until then every upload is its own "hearing". An upload before the time range is not
+//   joined: its job counts under "(upload not in range)". Hearing IDs are UUIDs from the
+//   browser: no case, party or file names.
+let recording = customEvents
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "recording";
+let uploads = recording
+    | where name == "upload.completed"
+    | extend
+        upload_id = tostring(customDimensions["hmcts.journey.id"]),
+        hearing_id = tostring(customDimensions["hmcts.journey.parent_id"]),
+        upload_s = todouble(customDimensions["audio.duration_seconds"])
+    | summarize arg_max(timestamp, hearing_id, upload_s) by upload_id
+    | project upload_id, hearing_id, upload_s;
+let jobs = recording
+    | where name == "job.finished"
+    | where tostring(customDimensions["hmcts.outcome"]) == "success"
+    | extend
+        upload_id = tostring(customDimensions["hmcts.journey.parent_id"]),
+        job_s = todouble(customDimensions["speech.audio_duration_s"]),
+        source = tostring(customDimensions["speech.audio_duration_source"])
+    | join kind=leftouter uploads on upload_id
+    | extend
+        seconds = coalesce(job_s, upload_s),
+        source = iff(isempty(source), "upload", source),
+        hearing = case(
+            isnotempty(hearing_id), hearing_id,
+            isnotempty(upload_id1), strcat("upload:", upload_id),
+            "(upload not in range)")
+    | where isnotnull(seconds);
+let total = toscalar(jobs | summarize sum(seconds));
+jobs
+| summarize
+    jobs = count(),
+    seconds = sum(seconds),
+    estimated_jobs = countif(source != "azure")
+    by hearing
+| extend
+    audio_hours = round(seconds / 3600.0, 3),
+    share_pct = round(100.0 * seconds / total, 2)
+| project hearing, jobs, estimated_jobs, audio_hours, share_pct
+| order by share_pct desc

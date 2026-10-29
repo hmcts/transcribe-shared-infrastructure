@@ -1,0 +1,33 @@
+// Storage failures by operation and code (DIAAT-283, DIAAT-280). Recording pipeline
+// (Phase 2): storage.
+//
+// Measure: failed database and blob writes in the recording pipeline.
+// Formula: count of job.storage_failed by storage.operation and hmcts.error.code, plus
+//   upload.failed with hmcts.error.code "storage.write_failed" (the upload's blob
+//   write) as operation "upload.blob_write"; with the last occurrence. Both parts keep
+//   hmcts.area == "recording" (journey type prefix as fallback): dictation's upload
+//   stage also emits upload.failed with storage.write_failed.
+// Source: job.storage_failed (after Azure Speech, in transcribe-api-worker:
+//   transcript.save, job.mark_failed, job.mark_needs_cleanup, blob.mark_failed; codes
+//   storage.db_unavailable, storage.db_rejected, storage.db_failed,
+//   storage.blob_failed) and the upload stage (POST /api/v1/uploads, transcribe-api).
+//   100% of events (OD2).
+// Caveats: a failed transcript.save is retried on the next poll, so this counts
+//   attempts. Storage reachability as such is on the service-health view
+//   (service.dependency.up, dependency "storage" and "database").
+union
+    (customEvents
+    | where name == "job.storage_failed"
+    | extend
+        operation = tostring(customDimensions["storage.operation"]),
+        error_code = tostring(customDimensions["hmcts.error.code"])),
+    (customEvents
+    | where name == "upload.failed"
+    | extend error_code = tostring(customDimensions["hmcts.error.code"])
+    | where error_code == "storage.write_failed"
+    | extend operation = "upload.blob_write")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| summarize failures = count(), last_seen = max(timestamp) by operation, error_code
+| order by failures desc

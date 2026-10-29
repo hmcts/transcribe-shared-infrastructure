@@ -1,0 +1,33 @@
+// Dictation autosave failures (DIAAT-284; events from OBS-4: DIAAT-278 / DIAAT-300), daily.
+//
+// Run against the environment's Application Insights resource (customEvents; one per
+// environment, no environment split). No parameters: the time range comes from the caller.
+//
+// Sources (browser, transcribe-web lib/dictation-session.ts, relayed by transcribe-api's
+// POST /api/telemetry, so cloud_RoleName transcribe-api):
+//   "live_draft.save_failed"      - one failed autosave; live_draft.failure_kind network |
+//                                   auth | server, http.response.status_code;
+//   "live_draft.autosave_stalled" - autosave has stopped working (consecutive failures);
+//   "live_draft.save_recovered"   - autosave works again (live_draft.outage_seconds);
+//   "dictation.session_ended" with hmcts.error.code "autosave.failed" - sessions that ended
+//                                   while autosave was still stalled.
+// Area: dictation only (DIAAT-205, decision 1). Relayed browser events carry no hmcts.area,
+// so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
+// Formula, per day, event and failure kind:
+//   events   = number of events
+//   sessions = distinct dictation sessions affected (hmcts.journey.id; dcount)
+// Caveats: "auth" failures are sign-in expiry, not a storage fault. Browser loss makes
+// counts a lower bound.
+customEvents
+| where name in ("live_draft.save_failed", "live_draft.autosave_stalled", "live_draft.save_recovered")
+    or (name == "dictation.session_ended" and tostring(customDimensions["hmcts.error.code"]) == "autosave.failed")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+// Empty too: autosave before recording starts sends these with no journey (and so no
+// area); the names are dictation's only, so nothing else can match.
+| where area in ("dictation", "")
+| extend failure_kind = tostring(customDimensions["live_draft.failure_kind"]),
+    journey_id = tostring(customDimensions["hmcts.journey.id"])
+| summarize events = sum(itemCount), sessions = dcount(journey_id)
+    by timestamp = bin(timestamp, 1d), event = name, failure_kind
+| order by timestamp asc, event asc, failure_kind asc

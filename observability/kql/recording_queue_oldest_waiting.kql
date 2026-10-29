@@ -1,0 +1,15 @@
+// Age of the oldest waiting job (DIAAT-281), 15-minute bins. Recording.
+//
+// Measure: how long the longest-waiting recording batch job has waited for Azure Speech
+//   to start it.
+// Formula: max(value) / 60 per bin, in minutes, across replicas and samples.
+// Source: gauge transcription.jobs.oldest_waiting_age (seconds; 0 when nothing waits),
+//   from the transcription_job table, exported by transcribe-api-worker. Recording-only
+//   metric, so no area filter: metric dimensions do not carry hmcts.area (decision 1).
+//   Never sampled (OD2).
+// Caveats: max across replicas, never sum (each reports the database-wide value). Jobs
+//   already reported stuck are left out of the gauge (see recording_queue_jobs.kql).
+customMetrics
+| where name == "transcription.jobs.oldest_waiting_age"
+| summarize oldest_waiting_min = round(max(value) / 60.0, 1) by bin(timestamp, 15m)
+| order by timestamp asc

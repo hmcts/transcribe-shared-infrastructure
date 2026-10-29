@@ -1,0 +1,27 @@
+// Alert query (DIAAT-285): share of active dictation sessions whose autosave stalled in
+// the alert window. Used by the "autosave-stalled" alert.
+//
+// Source (browser, OBS-4, dictation_autosave_failures.kql; transcribe-web
+// lib/dictation-session.ts, relayed by transcribe-api's POST /api/telemetry): every
+// event of the "dictation.session" journey counts the session as active;
+// "live_draft.autosave_stalled" (consecutive failed autosaves: autosave has stopped
+// working) marks it as affected, except live_draft.failure_kind "auth" (sign-in expiry,
+// not a storage fault).
+// Area: dictation only (DIAAT-205, decision 1). Relayed browser events carry no hmcts.area,
+// so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
+// failed_pct = 100 * stalled sessions / active sessions; failures = stalled sessions;
+// sessions = active sessions. The alert rule adds a minimum number of active sessions
+// (| where sessions >= N; heritage default 5) and fires on failed_pct > 10 over 30 min.
+// AC3: live_draft.failure_kind is an enum (network, auth, server) and sessions a count:
+// both are safe alert values (tests/check_kql_names.py).
+customEvents
+| where tostring(customDimensions["hmcts.journey.type"]) == "dictation.session"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend journey_id = tostring(customDimensions["hmcts.journey.id"]),
+    failure_kind = tostring(customDimensions["live_draft.failure_kind"])
+| summarize sessions = dcount(journey_id),
+    failures = dcountif(journey_id, name == "live_draft.autosave_stalled" and failure_kind != "auth")
+| extend failed_pct = round(100.0 * failures / sessions, 1)
+| project failed_pct, failures, sessions

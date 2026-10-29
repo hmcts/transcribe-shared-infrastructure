@@ -1,0 +1,41 @@
+// Failed jobs by stage, code and source (DIAAT-281, DIAAT-282, DIAAT-283). Recording.
+//
+// Measure: recording batch jobs that ended without a transcript, grouped by where and why.
+// Formula: job.finished with hmcts.outcome in (failure, error) and hmcts.area ==
+//   "recording" (journey type prefix as fallback; dictation also emits job.finished),
+//   counted by stage, hmcts.error.code, hmcts.failure.source and speech.error_code.
+//   stage = the job's last <stage>.failed event (same hmcts.journey.id);
+//   "speech_processing" for speech.job_failed (Azure reported the job as Failed, no
+//   stage of ours failed); "unknown" otherwise.
+// Source: job.finished and stage events from transcribe-api-worker (the batch poller),
+//   100% (OD2). Counter equivalent: transcription.jobs.finished
+//   (recording_failures_by_source.kql).
+// Caveats: a stage failure before the time range starts is not joined ("unknown"). Jobs
+//   that never finish are not here: see stuck jobs.
+let stage_failures = customEvents
+    | where name in ("speech_submission.failed", "results_retrieval.failed", "transcript_postprocessing.failed", "transcript_persistence.failed")
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "recording"
+    | summarize arg_max(timestamp, name) by job_id = tostring(customDimensions["hmcts.journey.id"])
+    | project job_id, failed_stage = tostring(split(name, ".")[0]);
+customEvents
+| where name == "job.finished"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| extend
+    outcome = tostring(customDimensions["hmcts.outcome"]),
+    error_code = tostring(customDimensions["hmcts.error.code"]),
+    source = tostring(customDimensions["hmcts.failure.source"]),
+    speech_error_code = tostring(customDimensions["speech.error_code"]),
+    job_id = tostring(customDimensions["hmcts.journey.id"])
+| where outcome in ("failure", "error")
+| join kind=leftouter stage_failures on job_id
+| extend where_failed = case(
+    isnotempty(failed_stage), failed_stage,
+    error_code == "speech.job_failed", "speech_processing",
+    "unknown")
+| summarize jobs = count(), last_seen = max(timestamp)
+    by where_failed, error_code, source, speech_error_code, outcome
+| order by jobs desc

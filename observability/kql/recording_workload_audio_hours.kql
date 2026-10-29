@@ -1,0 +1,37 @@
+// Audio hours uploaded and transcribed, daily (DIAAT-280, DIAAT-281). Workload and
+// capacity.
+//
+// Measure: hours of audio accepted, and hours of audio in jobs that completed.
+// Formula: uploaded = sum(audio.duration_seconds) / 3600 on upload.completed, per day;
+//   transcribed = the same, joined to job.finished (hmcts.outcome == "success") whose
+//   hmcts.journey.parent_id is the upload's hmcts.journey.id, per day of job.finished.
+// Source: upload.completed (audio.duration_seconds = length of the normalised 16 kHz WAV)
+//   and job.finished, in the recording area (both are also emitted by dictation:
+//   hmcts.area, else the journey type's prefix). 100% of events (OD2).
+// Caveats: job events do not carry the audio duration, hence the join; a job whose
+//   upload falls before the time range is not counted in "transcribed". Uploads whose
+//   WAV header could not be read have no duration. Jobs created without the upload's
+//   blob name have no parent and are not counted.
+let recording = customEvents
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "recording";
+let uploads = recording
+    | where name == "upload.completed"
+    | extend
+        upload_id = tostring(customDimensions["hmcts.journey.id"]),
+        audio_s = todouble(customDimensions["audio.duration_seconds"])
+    | where isnotnull(audio_s);
+let transcribed = recording
+    | where name == "job.finished"
+    | where tostring(customDimensions["hmcts.outcome"]) == "success"
+    | extend upload_id = tostring(customDimensions["hmcts.journey.parent_id"])
+    | join kind=inner (uploads | project upload_id, audio_s) on upload_id
+    | summarize hours = sum(audio_s) / 3600.0 by day = bin(timestamp, 1d)
+    | extend series = "transcribed (jobs completed)";
+uploads
+| summarize hours = sum(audio_s) / 3600.0 by day = bin(timestamp, 1d)
+| extend series = "uploaded (accepted)"
+| union transcribed
+| project day, series, hours = round(hours, 2)
+| order by day asc

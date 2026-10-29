@@ -1,0 +1,22 @@
+// ALERT (DIAAT-285, critical): a core dependency (database or Blob Storage) down for the
+// whole window.
+//
+// Measure: up = max(service.dependency.up) per dependency over the alert window, so 0
+//   only when every check on every API instance failed for the whole window
+//   ("sustained"); one successful check keeps it at 1.
+// dependency.name: database (PostgreSQL) or storage (Blob Storage), which both areas
+//   need. Azure Speech is not paged here: it is checked at most every 5 minutes (one
+//   failed check could fill a short window), and its failures have their own alerts
+//   (alert_recording_speech_*.kql, alert_dictation_speech_*.kql); its health is on the
+//   dashboard (service_dependency_up.kql).
+// Fires when up < 1. The window is alert_thresholds.dependency_down_minutes.
+// Source: the DIAAT-277 background checker in the API process (transcribe-api). No
+//   points (the API is down, or the checker is not running) means no alert here: the
+//   service-unavailable alert and the web tests cover that.
+// Output (AC3): the dependency name and 0/1.
+customMetrics
+| where name == "service.dependency.up"
+| extend dependency = tostring(customDimensions["dependency.name"])
+| where dependency in ("database", "storage")
+| summarize up = max(value) by dependency
+| project dependency, up

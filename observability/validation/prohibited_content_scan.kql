@@ -1,0 +1,95 @@
+// Prohibited-content scan of a deployed test window (DIAAT-287, AC3), both areas.
+// Validation only: not a workbook panel or an alert.
+//
+// Searches everything the service wrote to Application Insights during a validation run for
+// content that must never be there: the synthetic case details the testers entered (seeded
+// values) and anything that looks like an email address, a UK court or tribunal case
+// reference (also in file names), a SAS signature, a bearer token or JWT, a UK postcode or a
+// National Insurance number. The patterns are transcribe-api's RE2_PATTERNS
+// (tests/unit/telemetry_scan.py: the union of both areas' scanners, in the RE2 syntax KQL
+// runs), verbatim; tests/test_scan_patterns.py keeps them equal to the pinned copy in
+// re2-patterns.txt, which generate_telemetry_names.py refreshes.
+//
+// It returns counts only: per table, column and check, the number of matching values and up to
+// max_samples row IDs (itemId). Never the matched text. To triage a hit, look at that one row
+// privately (union traces, customEvents, exceptions, requests, dependencies | where itemId == "...")
+// and record the decision, not the content.
+//
+// How to run: the environment's Application Insights resource -> Logs. Set window_start and
+// window_end below to the validation window (UTC) and seeded_values to the synthetic case
+// entered (VALIDATION.md); the time picker then shows "Set in query". Run it and export the
+// result (Export -> CSV) as evidence, with the automated scan's JSON
+// (transcribe-api test-results/telemetry-pii-scan.json from the same commit).
+//
+// The approved sample: every row of traces, customEvents, exceptions, requests and dependencies
+// written in the test window, i.e. all telemetry produced by the scenarios in VALIDATION.md for
+// both areas (dictation: success, slow start, failed start, pause and resume, interruption,
+// document-generation failure; recording: upload, batch job, failed job), run with the
+// synthetic case in VALIDATION.md and nothing else.
+//
+// Pass: a "(scanned)" row with matches > 0 for traces, customEvents and requests (an empty window
+// proves nothing), and no other rows. Any other row fails until each of its sample rows has been
+// triaged: a false positive (for example a postcode-like token in a stack trace) is recorded with
+// its itemId and the reason; a true positive is a defect (raise it, and it blocks sign-off).
+let window_start = datetime(2026-01-01T00:00:00Z);  // the test window, UTC
+let window_end = datetime(2026-01-01T02:00:00Z);
+let max_samples = 5;
+// The synthetic case details entered during the test (VALIDATION.md), matched as terms.
+let seeded_values = dynamic(["Okonkwo-DIAAT298", "HomeOfficeRespondent-DIAAT298", "HHJ-Blackwood-DIAAT298",
+    "PrivateJudicialNote-DIAAT298", "AppellantStatesDIAAT298sentinel"]);
+let scanned = union isfuzzy=true
+    (traces | where timestamp between (window_start .. window_end)
+        | project table = "traces", column = "message", row_id = itemId, text = message),
+    (traces | where timestamp between (window_start .. window_end)
+        | project table = "traces", column = "customDimensions", row_id = itemId, text = tostring(customDimensions)),
+    (customEvents | where timestamp between (window_start .. window_end)
+        | project table = "customEvents", column = "name", row_id = itemId, text = name),
+    (customEvents | where timestamp between (window_start .. window_end)
+        | project table = "customEvents", column = "customDimensions", row_id = itemId, text = tostring(customDimensions)),
+    (exceptions | where timestamp between (window_start .. window_end)
+        | project table = "exceptions", column = "outerMessage", row_id = itemId, text = outerMessage),
+    (exceptions | where timestamp between (window_start .. window_end)
+        | project table = "exceptions", column = "innermostMessage", row_id = itemId, text = innermostMessage),
+    (exceptions | where timestamp between (window_start .. window_end)
+        | project table = "exceptions", column = "details", row_id = itemId, text = tostring(details)),
+    (exceptions | where timestamp between (window_start .. window_end)
+        | project table = "exceptions", column = "customDimensions", row_id = itemId, text = tostring(customDimensions)),
+    (requests | where timestamp between (window_start .. window_end)
+        | project table = "requests", column = "url", row_id = itemId, text = url),
+    (requests | where timestamp between (window_start .. window_end)
+        | project table = "requests", column = "name", row_id = itemId, text = name),
+    (requests | where timestamp between (window_start .. window_end)
+        | project table = "requests", column = "customDimensions", row_id = itemId, text = tostring(customDimensions)),
+    (dependencies | where timestamp between (window_start .. window_end)
+        | project table = "dependencies", column = "data", row_id = itemId, text = data),
+    (dependencies | where timestamp between (window_start .. window_end)
+        | project table = "dependencies", column = "target", row_id = itemId, text = target),
+    (dependencies | where timestamp between (window_start .. window_end)
+        | project table = "dependencies", column = "customDimensions", row_id = itemId, text = tostring(customDimensions)),
+    (union isfuzzy=true traces, customEvents, exceptions, requests, dependencies
+        | where timestamp between (window_start .. window_end)
+        | project table = "(all)", column = "user_AuthenticatedId", row_id = itemId, text = user_AuthenticatedId)
+    | where isnotempty(text);
+let hits = scanned
+    | extend
+        seeded_value = text has_any (seeded_values),
+        email = text matches regex @"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63})*\.[A-Za-z]{2,24}",
+        uk_case_reference = text matches regex @"(?:^|[^A-Za-z0-9])(?:[A-Za-z]{2}[/_ -]\d{5}[/_ -]\d{4}|UI-\d{4}-\d{6}|T\d{8}|[A-Z]{2}\d{2}[A-Z]\d{5})(?:$|[^0-9])",
+        sas_signature = text matches regex @"(?i)(?:^|[^a-z0-9_])sig=[A-Za-z0-9%+/=]{8,}",
+        bearer_token = text matches regex @"(?i)\bbearer\s+[A-Za-z0-9._~+/-]{8,}",
+        jwt = text matches regex @"\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]*",
+        uk_postcode = text matches regex @"\b(?:[A-PR-UWYZ][A-HK-Y]?\d[A-HJKPSTUW\d]?|GIR) ?\d[ABD-HJLNP-UW-Z]{2}\b",
+        ni_number = text matches regex @"\b[A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z] ?\d{2} ?\d{2} ?\d{2} ?[A-D]\b"
+    | extend checks = pack_array(
+        iff(seeded_value, "seeded_value", ""), iff(email, "email", ""), iff(uk_case_reference, "uk_case_reference", ""),
+        iff(sas_signature, "sas_signature", ""), iff(bearer_token, "bearer_token", ""), iff(jwt, "jwt", ""),
+        iff(uk_postcode, "uk_postcode", ""), iff(ni_number, "ni_number", ""))
+    | mv-expand pattern = checks to typeof(string)
+    | where isnotempty(pattern)
+    | summarize matches = count(), sample_row_ids = make_set(row_id, max_samples) by table, column, pattern;
+let coverage = scanned
+    | summarize matches = count() by table, column
+    | extend pattern = "(scanned)", sample_row_ids = dynamic([]);
+union hits, coverage
+| order by pattern asc, table asc, column asc
+| project table, column, pattern, matches, sample_row_ids

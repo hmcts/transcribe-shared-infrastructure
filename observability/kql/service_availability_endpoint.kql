@@ -1,0 +1,37 @@
+// Endpoint availability (DIAAT-277), per day, service and area.
+//
+// Formula, per day, service (cloud_RoleName) and area:
+//   availability % = 100 * (requests - unavailable) / requests
+//   unavailable    = server requests answered with a 5xx, or that failed with no HTTP
+//                    status (resultCode 0 or missing: the connection dropped, or an
+//                    unhandled exception escaped before a response was sent)
+// Exclusions:
+//   - 4xx count as available: client errors (validation, not found, not signed in);
+//   - health and version probes: /health, /healthz, /healthcheck and anything below
+//     them (e.g. /api/health/dependencies), /livez, /readyz, /version;
+//   - synthetic traffic (operation_SyntheticSource set, e.g. availability tests: those
+//     are measured in availabilityResults, service_availability_synthetic.kql).
+// Area: hmcts.area, set by transcribe-api on each area's requests; for older data, the
+// mount point (/api/v1 recording, the rest of /api dictation). Empty: shared paths
+// (the browser relay, /api/openapi.json) and transcribe-web's own pages.
+// A day without requests has no row: no traffic is neither 100% nor 0%.
+//
+// Target: 99% or 99.5% over a calendar month, still to be confirmed (DIAAT-277 AC3).
+// Parameter-free: the time range comes from the caller (workbook, alert window, Logs).
+requests
+| where isempty(operation_SyntheticSource)
+| extend path = tolower(tostring(parse_url(url).Path))
+| where not(path matches regex @"(^|/)(health|healthz|healthcheck|livez|readyz|version)(/|$)")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    case(path in ("/api/telemetry", "/api/openapi.json"), "",
+        path == "/api/v1" or path startswith "/api/v1/", "recording",
+        path startswith "/api/", "dictation", ""))
+| extend status = toint(resultCode)
+| summarize
+    requests = sum(itemCount),
+    unavailable = sumif(itemCount, status >= 500 or ((isnull(status) or status == 0) and success == false)),
+    client_errors = sumif(itemCount, status between (400 .. 499))
+    by timestamp = bin(timestamp, 1d), cloud_RoleName, area
+| extend availability_pct = round(100.0 * (requests - unavailable) / requests, 3)
+| project timestamp, cloud_RoleName, area, availability_pct, requests, unavailable, client_errors
+| order by timestamp asc, cloud_RoleName asc, area asc

@@ -1,0 +1,32 @@
+// Azure Speech calls by operation (DIAAT-282). Recording pipeline (Phase 2): Speech.
+//
+// Measure: volume, latency and failures of each kind of batch HTTP call to Azure Speech.
+// Formula: per speech.operation: calls = sum(valueCount) of the duration histogram;
+//   avg_ms = 1000 * sum(valueSum) / calls; max_ms = 1000 * max(valueMax);
+//   failures = sum of transcription.speech.call.failures; failure % = 100 * failures /
+//   calls; throttled = sum of transcription.speech.throttled (HTTP 429).
+// Source: transcription.speech.call.duration (histogram, s), .call.failures and
+//   transcription.speech.throttled (counters), emitted only by the recording batch
+//   client (transcribe-api for submissions, transcribe-api-worker for polling), so no
+//   area filter: metric dimensions do not carry hmcts.area (decision 1). Operations:
+//   speech.submit, speech.status, speech.results, speech.delete, speech.model. Never
+//   sampled (OD2).
+// Caveats: a failure is a 4xx/5xx or a transport error; a 404 on delete is success.
+//   Each retry attempt is its own call. No percentiles: App Insights stores only
+//   count/sum/min/max of a histogram. Dictation's live Speech sessions are not here.
+customMetrics
+| where name in ("transcription.speech.call.duration", "transcription.speech.call.failures", "transcription.speech.throttled")
+| extend operation = tostring(customDimensions["speech.operation"])
+| summarize
+    calls = sumif(valueCount, name == "transcription.speech.call.duration"),
+    total_s = sumif(valueSum, name == "transcription.speech.call.duration"),
+    max_s = maxif(valueMax, name == "transcription.speech.call.duration"),
+    failures = sumif(value, name == "transcription.speech.call.failures"),
+    throttled = sumif(value, name == "transcription.speech.throttled")
+    by operation
+| extend
+    avg_ms = round(iff(calls > 0, 1000.0 * total_s / calls, real(null)), 0),
+    max_ms = round(1000.0 * max_s, 0),
+    failure_pct = round(iff(calls > 0, 100.0 * failures / calls, real(null)), 2)
+| project operation, calls, avg_ms, max_ms, failures, failure_pct, throttled
+| order by calls desc

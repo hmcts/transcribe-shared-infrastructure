@@ -1,0 +1,58 @@
+// Dictation workload per day (DIAAT-284; DIAAT-276 / 279, OBS-4).
+//
+// Run against the environment's Application Insights resource (customEvents). No
+// parameters: the time range comes from the caller.
+//
+// Columns (names as emitted by the code):
+//   sessions_started   = distinct dictation.session journeys whose first event fell that
+//                        day (first event normally "dictation.session_requested");
+//   sessions_ended     = "dictation.session_ended" events;
+//   sessions_submitted = of those, dictation.end_reason "submitted";
+//   submissions        = server submission stage runs ("submission.completed" /
+//                        ".failed" / ".cancelled", journey "dictation.submission");
+//   submissions_ok     = "submission.completed";
+//   documents          = "document.available" (decision document stored and linked);
+//   upload_jobs        = uploaded-audio jobs finished ("job.finished", any outcome);
+//   upload_jobs_ok     = "job.finished" with hmcts.outcome "success".
+// job.finished and the upload stage events come from both areas: filtered to dictation
+// (hmcts.area, else the journey type's prefix).
+// Caveats: not sampled. Browser events (sessions) are a lower bound; server events
+// (submissions, documents, jobs) are complete while the API can export.
+let first_seen = customEvents
+    | where tostring(customDimensions["hmcts.journey.type"]) == "dictation.session"
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "dictation"
+    | summarize start = min(timestamp) by journey_id = tostring(customDimensions["hmcts.journey.id"])
+    | summarize sessions_started = count() by timestamp = bin(start, 1d);
+let events = customEvents
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "dictation"
+    | where name in ("dictation.session_ended", "submission.completed", "submission.failed",
+        "submission.cancelled", "document.available", "job.finished")
+    | extend journey = tostring(customDimensions["hmcts.journey.type"]),
+        outcome = tostring(customDimensions["hmcts.outcome"]),
+        end_reason = tostring(customDimensions["dictation.end_reason"])
+    | summarize
+        sessions_ended = sumif(itemCount, name == "dictation.session_ended"),
+        sessions_submitted = sumif(itemCount, name == "dictation.session_ended" and end_reason == "submitted"),
+        submissions = sumif(itemCount, name startswith "submission." and journey == "dictation.submission"),
+        submissions_ok = sumif(itemCount, name == "submission.completed" and journey == "dictation.submission"),
+        documents = sumif(itemCount, name == "document.available"),
+        upload_jobs = sumif(itemCount, name == "job.finished"),
+        upload_jobs_ok = sumif(itemCount, name == "job.finished" and outcome == "success")
+        by timestamp = bin(timestamp, 1d);
+first_seen
+| join kind=fullouter events on timestamp
+| extend timestamp = coalesce(timestamp, timestamp1)
+| project timestamp,
+    sessions_started = coalesce(sessions_started, 0),
+    sessions_ended = coalesce(sessions_ended, 0),
+    sessions_submitted = coalesce(sessions_submitted, 0),
+    submissions = coalesce(submissions, 0),
+    submissions_ok = coalesce(submissions_ok, 0),
+    documents = coalesce(documents, 0),
+    upload_jobs = coalesce(upload_jobs, 0),
+    upload_jobs_ok = coalesce(upload_jobs_ok, 0)
+| order by timestamp asc

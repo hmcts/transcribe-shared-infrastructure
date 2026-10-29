@@ -1,0 +1,40 @@
+// Dictation session failures by code (DIAAT-284; event from OBS-4), over the time range.
+//
+// Run against the environment's Application Insights resource (customEvents; one per
+// environment, no environment split). No parameters: the time range comes from the caller.
+//
+// Source: "dictation.session_ended" (browser, transcribe-web lib/dictation-session.ts,
+// relayed by transcribe-api's POST /api/telemetry) with hmcts.outcome "failure" or
+// "error"; codes "dictation.no_transcript" (failure), "autosave.failed",
+// "speech.unhealthy", "submission.failed" (error). Cancelled sessions
+// ("dictation.not_submitted") are not failures and are left out.
+// Area: dictation only (DIAAT-205, decision 1), for the failures and the total. Relayed
+// browser events carry no hmcts.area, so the area comes from the journey type's prefix
+// ("dictation.session" -> "dictation").
+// Formula, per code and end reason:
+//   sessions  = failed sessions with that code
+//   share_pct = 100 * sessions / all dictation.session_ended in the range
+//   avg_speech_sessions, avg_autosave_failures = means of dictation.speech_sessions and
+//   dictation.autosave_failures on those sessions (reconnects and autosave trouble).
+// Caveat: as dictation_session_outcomes.kql (browser loss makes counts a lower bound).
+let ended = customEvents
+    | where name == "dictation.session_ended"
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "dictation";
+let total = toscalar(ended | summarize sum(itemCount));
+ended
+| extend outcome = tostring(customDimensions["hmcts.outcome"]),
+    code = tostring(customDimensions["hmcts.error.code"]),
+    end_reason = tostring(customDimensions["dictation.end_reason"]),
+    speech_sessions = toint(customDimensions["dictation.speech_sessions"]),
+    autosave_failures = toint(customDimensions["dictation.autosave_failures"])
+| where outcome in ("failure", "error")
+| summarize sessions = sum(itemCount),
+    avg_speech_sessions = round(avg(speech_sessions), 1),
+    avg_autosave_failures = round(avg(autosave_failures), 1),
+    last_seen = max(timestamp)
+    by code, outcome, end_reason
+| extend share_pct = round(100.0 * sessions / total, 2)
+| project code, outcome, end_reason, sessions, share_pct, avg_speech_sessions, avg_autosave_failures, last_seen
+| order by sessions desc

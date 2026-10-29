@@ -1,0 +1,25 @@
+// ALERT (DIAAT-285, critical): service unavailable, endpoint availability.
+//
+// Measure: availability_pct per service (cloud_RoleName) and area over the alert window,
+//   with the formula and exclusions of service_availability_endpoint.kql: 5xx and
+//   no-status failures are unavailable, 4xx are available, health and version probes
+//   and synthetic traffic excluded.
+// Area: hmcts.area as transcribe-api sets it (empty: shared paths and transcribe-web),
+//   so a failing area is visible even when the other is busy.
+// Fires when availability_pct < the threshold (alert_thresholds.endpoint_availability_pct).
+// Parameter (prepended by Terraform as a let): min_requests, so one failed request out
+//   of two at night does not page anyone. Quiet periods are covered by the web tests.
+// Output (AC3): the service name, the area, a count and a percentage. Nothing else.
+// To run in Logs: prepend `let min_requests = 10;`.
+requests
+| where isempty(operation_SyntheticSource)
+| where not(url matches regex @"(?i)/(health|healthz|healthcheck|livez|readyz|version)(/|\?|$)")
+| extend area = tostring(customDimensions["hmcts.area"])
+| extend status = toint(resultCode)
+| summarize
+    requests = sum(itemCount),
+    unavailable = sumif(itemCount, status >= 500 or ((isnull(status) or status == 0) and success == false))
+    by cloud_RoleName, area
+| where requests >= min_requests
+| extend availability_pct = round(100.0 * (requests - unavailable) / requests, 3)
+| project cloud_RoleName, area, requests, availability_pct

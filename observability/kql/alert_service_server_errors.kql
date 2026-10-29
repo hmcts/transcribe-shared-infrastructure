@@ -1,0 +1,21 @@
+// ALERT (DIAAT-285): elevated HTTP 5xx rate (early warning, below "unavailable").
+//
+// Measure: server_error_pct per service and area over the window, with the formula and
+//   exclusions of service_server_error_rate.kql (probes and synthetic traffic excluded,
+//   4xx not errors). Area: hmcts.area as transcribe-api sets it.
+// Fires when server_error_pct > alert_thresholds.server_error_pct.
+// Parameter (prepended by Terraform as a let): min_requests. To run in Logs: prepend
+//   `let min_requests = 20;`.
+// Output (AC3): the service name, the area, a count and a percentage.
+requests
+| where isempty(operation_SyntheticSource)
+| where not(url matches regex @"(?i)/(health|healthz|healthcheck|livez|readyz|version)(/|\?|$)")
+| extend area = tostring(customDimensions["hmcts.area"])
+| extend status = toint(resultCode)
+| summarize
+    requests = sum(itemCount),
+    server_errors = sumif(itemCount, status >= 500 or ((isnull(status) or status == 0) and success == false))
+    by cloud_RoleName, area
+| where requests >= min_requests
+| extend server_error_pct = round(100.0 * server_errors / requests, 3)
+| project cloud_RoleName, area, requests, server_error_pct

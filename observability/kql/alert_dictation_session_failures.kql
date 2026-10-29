@@ -1,0 +1,21 @@
+// Alert query (DIAAT-285): dictation sessions that ended in error in the alert window, by
+// code. Used by the "dictation-session-failures" alert (measure: failures).
+//
+// Source: "dictation.session_ended" (OBS-4, dictation_session_failures.kql; transcribe-web
+// lib/dictation-session.ts, relayed by transcribe-api's POST /api/telemetry) with
+// hmcts.outcome "error": "autosave.failed", "speech.unhealthy", "submission.failed".
+// "failure" ("dictation.no_transcript": nothing was captured) is left out here: it is
+// often the user (no speech, wrong microphone) and is on the dictation dashboard.
+// Area: dictation only (DIAAT-205, decision 1). Relayed browser events carry no hmcts.area,
+// so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
+// Output: error_code (hmcts.error.code), failures (sessions ended in error).
+customEvents
+| where name == "dictation.session_ended"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend outcome = tostring(customDimensions["hmcts.outcome"]),
+    error_code = tostring(customDimensions["hmcts.error.code"])
+| where outcome == "error"
+| summarize failures = sum(itemCount) by error_code
+| project error_code, failures

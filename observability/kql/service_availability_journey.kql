@@ -1,0 +1,64 @@
+// Journey availability (DIAAT-277), per day and journey, for both areas.
+//
+// Journeys and the events they are measured from:
+//   dictation.session       - browser event "dictation.session_ended", one per dictation
+//                             session (transcribe-web lib/dictation-session.ts, relayed by
+//                             POST /api/telemetry; journey type dictation.session).
+//   dictation.submission    - stage events "submission.completed" / ".failed" /
+//                             ".cancelled" (POST /api/live-transcription/submission;
+//                             success: the document was generated, stored and linked).
+//   dictation.transcription - "job.finished" in the dictation area: an uploaded file
+//                             transcribed by the worker, with minutes and a document.
+//   recording.job           - "job.finished" in the recording area: an Azure Speech
+//                             batch job reached a terminal state (DIAAT-281/282/283).
+// job.finished comes from both areas, so it is split by area: hmcts.area, else the
+// journey type's prefix.
+//
+// Formula, per journey: success % = 100 * succeeded / counted.
+// dictation.session (hmcts.outcome on dictation.session_ended):
+//   succeeded = "success" (submitted) or "cancelled" (left without submitting, transcript
+//               captured, autosave and Speech healthy: nothing lost);
+//   failed    = "failure" (dictation.no_transcript) or "error" (autosave.failed,
+//               speech.unhealthy, submission.failed).
+// dictation.submission, dictation.transcription and recording.job (hmcts.outcome):
+//   succeeded = "success";
+//   failed    = "error" (server-side or dependency failure, whatever its source);
+//   excluded  = "failure" (the caller's request was rejected: client_failure_code, the
+//               4xx rule) and "cancelled"; shown in excluded, not in the percentage.
+// Caveats: a browser that closes before its telemetry is sent loses
+// dictation.session_ended (a lower bound on volume, not on the rate). A job that never
+// finishes has no job.finished: see the stuck-job measures.
+//
+// Target: 99% or 99.5% over a calendar month, still to be confirmed (DIAAT-277 AC3).
+let sessions = customEvents
+    | where name == "dictation.session_ended"
+    | extend outcome = tostring(customDimensions["hmcts.outcome"])
+    | extend journey = "dictation.session",
+        is_counted = outcome in ("success", "cancelled", "failure", "error"),
+        is_success = outcome in ("success", "cancelled");
+let submissions = customEvents
+    | where name in ("submission.completed", "submission.failed", "submission.cancelled")
+    | where tostring(customDimensions["hmcts.journey.type"]) == "dictation.submission"
+    | extend outcome = tostring(customDimensions["hmcts.outcome"])
+    | extend journey = "dictation.submission",
+        is_counted = outcome in ("success", "error"),
+        is_success = outcome == "success";
+let jobs = customEvents
+    | where name == "job.finished"
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area in ("dictation", "recording")
+    | extend outcome = tostring(customDimensions["hmcts.outcome"])
+    | extend journey = iff(area == "recording", "recording.job", "dictation.transcription"),
+        is_counted = outcome in ("success", "error"),
+        is_success = outcome == "success";
+union sessions, submissions, jobs
+| summarize
+    counted = sumif(itemCount, is_counted),
+    succeeded = sumif(itemCount, is_counted and is_success),
+    failed = sumif(itemCount, is_counted and not(is_success)),
+    excluded = sumif(itemCount, not(is_counted))
+    by timestamp = bin(timestamp, 1d), journey
+| extend success_pct = iff(counted > 0, round(100.0 * succeeded / counted, 3), real(null))
+| project timestamp, journey, success_pct, counted, succeeded, failed, excluded
+| order by timestamp asc, journey asc

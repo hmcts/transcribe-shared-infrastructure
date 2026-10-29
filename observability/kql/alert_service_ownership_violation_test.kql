@@ -1,0 +1,17 @@
+// ALERT (DIAAT-285, TEST, Security): the controlled test of the ownership-violation route.
+//
+// Measure: count of security.ownership_violation with security.outcome "test", emitted
+//   only by POST /api/security/alert-test (transcribe-api), which works only where
+//   ENVIRONMENT is in SECURITY_ALERT_TEST_ENVIRONMENTS (local, test) and
+//   SECURITY_ALERT_TEST_TRIGGER_ENABLED=true. Same action group as the real alert, but its
+//   own rule, named "[TEST]" and Sev 4, so it can never be mistaken for one.
+// Fires when violations > 0.
+// Output (AC3): two enums and a count.
+customEvents
+| where name == "security.ownership_violation"
+| extend
+    outcome = tostring(customDimensions["security.outcome"]),
+    resource_type = tostring(customDimensions["security.resource_type"])
+| where outcome == "test"
+| summarize violations = sum(itemCount) by outcome, resource_type
+| project outcome, resource_type, violations
