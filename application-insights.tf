@@ -9,6 +9,7 @@ module "application_insights" {
   common_tags         = local.tags
 
   daily_data_cap_in_gb = var.daily_data_cap_in_gb
+  alert_limit_reached  = var.alert_limit_reached
 }
 
 # Both components read this at BUILD time: Jenkinsfile_CNP declares
