@@ -75,6 +75,14 @@ class AlertOutputCheck(unittest.TestCase):
         text = SAFE.replace("| summarize", '// message, url\n| where error_code != "message url"\n| summarize')
         self.assertEqual(checker.alert_problems(text), [])
 
+    def test_a_computed_dimension_key_is_rejected(self) -> None:
+        # PR review: customDimensions[key] would bypass SAFE_ALERT_ATTRIBUTES.
+        text = 'let key = "transcript.title";\n' + SAFE.replace(
+            '| extend error_code = tostring(customDimensions["hmcts.error.code"])',
+            '| extend error_code = tostring(customDimensions["hmcts.error.code"]), source = tostring(customDimensions[key])',
+        )
+        self.assert_rejected(text, "computed key")
+
     def test_single_quoted_keys_and_column_ifexists_are_rejected(self) -> None:
         quoted = SAFE.replace('customDimensions["hmcts.error.code"]', "customDimensions['transcript.title']")
         self.assert_rejected(quoted, "single quotes")

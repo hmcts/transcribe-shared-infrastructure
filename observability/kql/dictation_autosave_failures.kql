@@ -16,7 +16,7 @@
 // so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
 // Formula, per day, event and failure kind:
 //   events   = number of events
-//   sessions = distinct dictation sessions affected (hmcts.journey.id; dcount)
+//   sessions = distinct dictation sessions affected (hmcts.journey.id; dcount of non-empty IDs)
 // Caveats: "auth" failures are sign-in expiry, not a storage fault. Browser loss makes
 // counts a lower bound.
 customEvents
@@ -29,6 +29,8 @@ customEvents
 | where area in ("dictation", "")
 | extend failure_kind = tostring(customDimensions["live_draft.failure_kind"]),
     journey_id = tostring(customDimensions["hmcts.journey.id"])
-| summarize events = sum(itemCount), sessions = dcount(journey_id)
+// Events sent before a session journey exists have an empty ID: counted as events, not as
+// a session.
+| summarize events = sum(itemCount), sessions = dcountif(journey_id, isnotempty(journey_id))
     by timestamp = bin(timestamp, 1d), event = name, failure_kind
 | order by timestamp asc, event asc, failure_kind asc

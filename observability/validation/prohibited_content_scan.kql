@@ -78,10 +78,24 @@ let scanned = union isfuzzy=true
         | where timestamp between (window_start .. window_end)
         | project table = "(all)", column = "user_AuthenticatedId", row_id = itemId, text = user_AuthenticatedId)
     | where isnotempty(text);
-let hits = scanned
-    | where row_id !in (cleared_row_ids)
+let unreviewed = scanned
+    | where row_id !in (cleared_row_ids);
+// Seeds as case-insensitive substrings: has_any matches whole terms only, so a seed inside a
+// longer token (prefixAppellant...suffix) would be missed. Its own branch, so an empty seed
+// list yields no seeded rows and never removes rows from the pattern checks.
+let seeds = print seed = seeded_values
+    | mv-expand seed to typeof(string)
+    | where isnotempty(seed)
+    | extend k = 1;
+let seeded_hits = unreviewed
+    | extend k = 1
+    | join kind=inner seeds on k
+    | where text contains seed
+    | distinct table, column, row_id
+    | summarize matches = count(), sample_row_ids = make_set(row_id, max_samples) by table, column
+    | extend pattern = "seeded_value";
+let hits = unreviewed
     | extend
-        seeded_value = text has_any (seeded_values),
         email = text matches regex @"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63})*\.[A-Za-z]{2,24}",
         uk_case_reference = text matches regex @"(?:^|[^A-Za-z0-9])(?:[A-Za-z]{2}[/_ -]\d{5}[/_ -]\d{4}|UI-\d{4}-\d{6}|T\d{8}|[A-Z]{2}\d{2}[A-Z]\d{5})(?:$|[^0-9])",
         sas_signature = text matches regex @"(?i)(?:^|[^a-z0-9_])sig=[A-Za-z0-9%+/=]{8,}",
@@ -90,7 +104,7 @@ let hits = scanned
         uk_postcode = text matches regex @"\b(?:[A-PR-UWYZ][A-HK-Y]?\d[A-HJKPSTUW\d]?|GIR) ?\d[ABD-HJLNP-UW-Z]{2}\b",
         ni_number = text matches regex @"\b[A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z] ?\d{2} ?\d{2} ?\d{2} ?[A-D]\b"
     | extend checks = pack_array(
-        iff(seeded_value, "seeded_value", ""), iff(email, "email", ""), iff(uk_case_reference, "uk_case_reference", ""),
+        iff(email, "email", ""), iff(uk_case_reference, "uk_case_reference", ""),
         iff(sas_signature, "sas_signature", ""), iff(bearer_token, "bearer_token", ""), iff(jwt, "jwt", ""),
         iff(uk_postcode, "uk_postcode", ""), iff(ni_number, "ni_number", ""))
     | mv-expand pattern = checks to typeof(string)
@@ -99,6 +113,6 @@ let hits = scanned
 let coverage = scanned
     | summarize matches = count() by table, column
     | extend pattern = "(scanned)", sample_row_ids = dynamic([]);
-union hits, coverage
+union seeded_hits, hits, coverage
 | order by pattern asc, table asc, column asc
 | project table, column, pattern, matches, sample_row_ids

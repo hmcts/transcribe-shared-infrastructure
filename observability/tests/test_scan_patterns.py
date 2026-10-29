@@ -49,8 +49,21 @@ class ClearedRows(unittest.TestCase):
     def test_cleared_false_positives_are_excluded_before_the_hits_are_counted(self) -> None:
         text = SCAN.read_text(encoding="utf-8")
         self.assertIn("let cleared_row_ids = dynamic([]);", text)
-        hits = text[text.index("let hits = scanned"):]
-        self.assertTrue(hits.splitlines()[1].strip() == "| where row_id !in (cleared_row_ids)")
+        self.assertIn("let unreviewed = scanned\n    | where row_id !in (cleared_row_ids);", text)
+        # Both kinds of hit are counted from the unreviewed rows only.
+        self.assertIn("let seeded_hits = unreviewed\n", text)
+        self.assertIn("let hits = unreviewed\n", text)
+
+
+class SeededValues(unittest.TestCase):
+    """PR review: a seed inside a longer token must still be found."""
+
+    def test_seeds_are_matched_as_substrings_in_their_own_branch(self) -> None:
+        text = SCAN.read_text(encoding="utf-8")
+        self.assertNotIn("has_any (seeded_values)", text)  # whole terms only
+        self.assertIn("| where text contains seed", text)
+        self.assertIn("| where isnotempty(seed)", text)
+        self.assertIn("union seeded_hits, hits, coverage", text)
 
 
 if __name__ == "__main__":

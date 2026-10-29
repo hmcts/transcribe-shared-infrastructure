@@ -116,7 +116,9 @@ IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 STRING_LITERAL = re.compile(r'@?"[^"]*"')
 DIMENSION_KEY = re.compile(r'customDimensions\s*\[\s*"(?P<key>[^"]*)"\s*\]')
 SINGLE_QUOTED_KEY = re.compile(r"customDimensions\s*\[\s*'")
-BARE_DIMENSIONS = re.compile(r"\bcustomDimensions\b(?!\s*\[)")
+# Any customDimensions left once the vetted literal-key reads are removed: the whole bag,
+# or a computed key (customDimensions[key]) that would bypass SAFE_ALERT_ATTRIBUTES.
+BARE_DIMENSIONS = re.compile(r"\bcustomDimensions\b")
 KIND_BY_TABLE = {"customEvents": "event", "customMetrics": "metric"}
 AREA_FILE = re.compile(r"^(?:alert_)?(?:dictation|recording)_")
 AREA_ATTRIBUTE = re.compile(r'customDimensions\s*\[\s*"hmcts\.area"\s*\]')
@@ -236,7 +238,9 @@ def alert_problems(text: str) -> list[str]:
         problems.append("alert uses pack_all; read single safe columns")
     without_keys = DIMENSION_KEY.sub("", code)
     if BARE_DIMENSIONS.search(without_keys):
-        problems.append("alert uses customDimensions as a whole; read single safe keys")
+        problems.append(
+            "alert uses customDimensions as a whole or with a computed key; read single safe keys by name"
+        )
     for line in lines:
         words = set(IDENTIFIER.findall(STRING_LITERAL.sub("", DIMENSION_KEY.sub("", line))))
         problems.extend(f"alert mentions content column {word!r}" for word in sorted(words & CONTENT_COLUMNS))
