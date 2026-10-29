@@ -1,0 +1,25 @@
+// Upload processing time p50/p95 by day (DIAAT-280). Recording pipeline (Phase 2): upload.
+//
+// Measure: how long the API takes to handle an accepted recording upload.
+// Formula: p50 and p95 of hmcts.duration_ms / 1000 on upload.completed, per day, where
+//   hmcts.area == "recording" (journey type prefix as fallback; dictation's upload stage
+//   emits the same events).
+// Source: upload stage events of POST /api/v1/uploads (transcribe-api), 100% (OD2). The
+//   unsampled hmcts.stage.duration metric (stage "upload") has only count/sum/min/max
+//   in App Insights (the exporter sends no buckets) and no hmcts.area dimension, so it
+//   cannot tell the areas' uploads apart; percentiles come from the events.
+// Caveats: the stage starts once FastAPI has received the multipart body, so it covers
+//   validation, transcoding to 16 kHz WAV and the blob write, NOT the network transfer
+//   from the browser. Rejected uploads (upload.failed) are excluded.
+customEvents
+| where name == "upload.completed"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| extend seconds = todouble(customDimensions["hmcts.duration_ms"]) / 1000.0
+| where isnotnull(seconds)
+| summarize
+    p50_s = round(percentile(seconds, 50), 2),
+    p95_s = round(percentile(seconds, 95), 2)
+    by day = bin(timestamp, 1d)
+| order by day asc

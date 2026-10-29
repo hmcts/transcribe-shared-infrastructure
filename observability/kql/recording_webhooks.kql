@@ -1,0 +1,22 @@
+// Webhook delivery, daily (DIAAT-281, DIAAT-283). Recording pipeline (Phase 2):
+// transcript availability.
+//
+// Measure: result notifications delivered to callers vs not delivered.
+// Formula: count of webhook.delivered and webhook.delivery_failed per day, by
+//   webhook.notification (succeeded = the job's transcript, failed = the job failed),
+//   where hmcts.area == "recording" (journey type prefix as fallback).
+// Source: webhook events from the batch poller (transcribe-api-worker), 100% (OD2).
+//   delivery_failed = not delivered after all attempts (hmcts.error.code
+//   webhook.not_delivered).
+// Caveats: only jobs with a callback URL send webhooks. POST /api/v1/jobs does not set
+//   one (transcribe-api at ab73a2c), so no rows is expected until a caller can
+//   register one.
+customEvents
+| where name in ("webhook.delivered", "webhook.delivery_failed")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| summarize webhooks = count() by day = bin(timestamp, 1d), series = strcat(
+    iff(name == "webhook.delivered", "delivered", "not delivered"), " (",
+    tostring(customDimensions["webhook.notification"]), ")")
+| order by day asc

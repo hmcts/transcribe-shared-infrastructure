@@ -1,0 +1,21 @@
+// Alert query (DIAAT-285): failed document generation runs in the alert window, by
+// journey and code. Used by the "document-generation-failures" alert (measure: failures).
+//
+// Source: stage("document_generation") (DIAAT-279, dictation_document_generation.kql),
+// "document_generation.failed" with hmcts.outcome "error". Journeys (output as source):
+// "dictation.submission" (decision document, transcribe-api: "document.render_failed",
+// "document.store_failed") and "dictation.transcription" (uploaded audio,
+// transcribe-api-worker: "document.not_generated").
+// Area: dictation only (DIAAT-205, decision 1): hmcts.area, or the journey type's prefix.
+// Output: source (hmcts.journey.type), error_code (hmcts.error.code), failures (runs).
+customEvents
+| where name == "document_generation.failed"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend source = tostring(customDimensions["hmcts.journey.type"]),
+    outcome = tostring(customDimensions["hmcts.outcome"]),
+    error_code = tostring(customDimensions["hmcts.error.code"])
+| where outcome == "error"
+| summarize failures = sum(itemCount) by source, error_code
+| project source, error_code, failures

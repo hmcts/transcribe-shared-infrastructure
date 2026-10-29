@@ -1,0 +1,29 @@
+// Alert query (DIAAT-205, new; DIAAT-285 rules): live dictation sessions whose Azure Speech
+// sessions kept collapsing in the alert window. Replaces the browser Sentry alert on
+// "speech.unhealthy" (the browser no longer reports to Sentry).
+//
+// Source (browser, OBS-4, dictation_speech_cancellations.kql; transcribe-web
+// lib/dictation-session.ts, relayed by transcribe-api's POST /api/telemetry):
+// "speech.unhealthy" - Speech sessions collapsing repeatedly (dictation.collapses_in_window
+// in dictation.window_seconds); it fails the dictation session with "speech.unhealthy".
+// Area: dictation only (DIAAT-205, decision 1). Relayed browser events carry no hmcts.area,
+// so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
+// Every event of the "dictation.session" journey counts the session as active.
+// Output: failures = distinct sessions with "speech.unhealthy" (hmcts.journey.id);
+// failed_pct = 100 * failures / active sessions (context only). No code dimension on
+// purpose: this alert counts collapsing sessions whatever the cause; the per-code view
+// is alert_dictation_speech_failures.kql.
+// Suggested rule (provisional, as the heritage thresholds): measure failures, Total,
+// GreaterThanOrEqual 3 (as speech_failed_sessions), window PT30M, frequency PT10M,
+// severity 2, no dimensions. Overlaps "speech-failures", which also counts this event
+// per error code; this one pages on collapse even when the error codes are spread out.
+customEvents
+| where tostring(customDimensions["hmcts.journey.type"]) == "dictation.session"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend journey_id = tostring(customDimensions["hmcts.journey.id"])
+| summarize sessions = dcount(journey_id),
+    failures = dcountif(journey_id, name == "speech.unhealthy")
+| extend failed_pct = round(100.0 * failures / sessions, 1)
+| project failures, failed_pct

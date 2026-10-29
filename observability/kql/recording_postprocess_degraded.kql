@@ -1,0 +1,18 @@
+// Degraded speaker processing, daily (DIAAT-283). Recording pipeline (Phase 2):
+// post-processing.
+//
+// Measure: recording transcripts saved with a speaker-processing step skipped.
+// Formula: count of transcript.postprocess_degraded per day, by
+//   transcript.postprocess_step, where hmcts.area == "recording" (journey type prefix
+//   as fallback).
+// Source: transcript.postprocess_degraded from transcribe-api-worker (100%, OD2).
+//   Steps: speaker_grouping, speaker_normalisation, speaker_labelling. The previous
+//   step's output is kept, so the job still succeeds.
+// Caveats: no rows means no degraded transcripts.
+customEvents
+| where name == "transcript.postprocess_degraded"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| summarize transcripts = count() by day = bin(timestamp, 1d), step = tostring(customDimensions["transcript.postprocess_step"])
+| order by day asc

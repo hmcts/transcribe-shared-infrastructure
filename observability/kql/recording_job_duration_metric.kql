@@ -1,0 +1,30 @@
+// Job time by phase, from the unsampled metric (DIAAT-281, DIAAT-283). Recording.
+//
+// Measure: count, average and maximum of each phase of a recording batch job.
+// Formula: per phase and outcome, jobs = sum(valueCount), avg = sum(valueSum) /
+//   sum(valueCount), max = max(valueMax); minutes.
+// Source: histogram transcription.job.duration (seconds), attribute phase =
+//   queue_wait | processing | end_to_end | to_available, and hmcts.outcome on
+//   processing and end_to_end. Emitted only by the recording batch pipeline
+//   (transcribe-api-worker), so no area filter: metric dimensions do not carry
+//   hmcts.area (decision 1). Never sampled (OD2).
+// Caveats: App Insights stores only count/sum/min/max of a histogram, so no
+//   percentiles here: p50/p95 come from the events (recording_queue_wait.kql,
+//   recording_speech_processing.kql, recording_availability_durations.kql). Use this
+//   table to check the event-based figures are complete.
+customMetrics
+| where name == "transcription.job.duration"
+| extend
+    phase = tostring(customDimensions["phase"]),
+    outcome = tostring(customDimensions["hmcts.outcome"])
+| summarize
+    jobs = sum(valueCount),
+    total_s = sum(valueSum),
+    max_s = max(valueMax)
+    by phase, outcome = iff(isempty(outcome), "-", outcome)
+| extend
+    avg_min = round(iff(jobs > 0, total_s / jobs / 60.0, real(null)), 1),
+    max_min = round(max_s / 60.0, 1),
+    phase_order = case(phase == "queue_wait", 1, phase == "processing", 2, phase == "to_available", 3, 4)
+| order by phase_order asc, outcome asc
+| project phase, outcome, jobs, avg_min, max_min

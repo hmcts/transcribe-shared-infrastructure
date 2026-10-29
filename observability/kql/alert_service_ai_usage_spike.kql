@@ -1,0 +1,31 @@
+// ALERT (OBS-5): Azure Speech usage spike, both areas.
+//
+// Measure: spike_ratio = audio hours sent to Azure Speech in the last 24 hours / the
+//   24 hours before (or min_baseline_hours, whichever is larger), by feature:
+//   upload_transcription (dictation uploads, fast), batch_transcription (recording jobs)
+//   from hmcts.speech.audio.duration, and dictation (live dictation, the browser-reported
+//   Speech session length on hmcts.event.duration), as in ai_audio_hours_daily.kql.
+//   Usage only, never cost.
+// Fires when spike_ratio > alert_thresholds.ai_usage_spike_factor (3).
+// Why the previous day and not a trailing 7-day average: Azure caps a log alert's query
+//   time range at 2 days (window P2D). The 7-day view is ai_usage_trend.kql.
+//   min_baseline_hours keeps a quiet day (a weekend) from making a normal day a spike.
+// Parameter (prepended by Terraform as a let): min_baseline_hours. To run in Logs over
+//   the last 2 days: prepend `let min_baseline_hours = 1;`.
+// Output (AC3): the feature (a controlled code), hours and the ratio.
+let metered = customMetrics
+    | where name == "hmcts.speech.audio.duration"
+    | extend feature = tostring(customDimensions["hmcts.ai.feature"]);
+let dictation = customMetrics
+    | where name == "hmcts.event.duration"
+    | where tostring(customDimensions["event"]) == "speech.session_stopped"
+        and tostring(customDimensions["source"]) == "browser"
+    | extend feature = "dictation";
+union metered, dictation
+| where timestamp > ago(2d)
+| summarize
+    audio_hours = sumif(valueSum, timestamp > ago(1d)) / 3600.0,
+    baseline_hours = sumif(valueSum, timestamp <= ago(1d)) / 3600.0
+    by feature
+| extend spike_ratio = round(audio_hours / max_of(baseline_hours, todouble(min_baseline_hours)), 2)
+| project feature, audio_hours, baseline_hours, spike_ratio

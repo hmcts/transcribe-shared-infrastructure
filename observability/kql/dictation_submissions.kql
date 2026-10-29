@@ -1,0 +1,43 @@
+// Dictation submissions by outcome (DIAAT-284; DIAAT-276 / OBS-4), daily.
+//
+// Run against the environment's Application Insights resource (customEvents; one per
+// environment, no environment split). No parameters: the time range comes from the caller.
+//
+// Sources:
+//   server  - stage("submission") in transcribe-api src/transcribe_api/api/routes_dictation.py
+//             (POST /api/live-transcription/submission, cloud_RoleName transcribe-api),
+//             journey "dictation.submission": "submission.completed" (success: document
+//             generated, stored and linked), "submission.failed" (failure = client
+//             rejection 4xx, error = server or dependency failure, e.g.
+//             "storage.write_failed", "document.store_failed"), "submission.cancelled".
+//   browser - "dictation.submission_finished" (transcribe-web, relayed by POST
+//             /api/telemetry): what the user saw, including requests that never reached
+//             the API (code "network", "submission.client_error").
+// Area: dictation only (DIAAT-205, decision 1): hmcts.area on the server events; the
+// relayed browser events carry none, so the area comes from the journey type's prefix.
+// Formula, per day, source, outcome and code:
+//   submissions = number of events; p50_ms / p95_ms = percentiles of hmcts.duration_ms
+//   (server: stage time; browser: request time).
+// Caveats: not sampled. Browser counts are a lower bound (lost if the page closes first).
+let server = customEvents
+    | where name in ("submission.completed", "submission.failed", "submission.cancelled")
+    | where tostring(customDimensions["hmcts.journey.type"]) == "dictation.submission"
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "dictation"
+    | extend source = "server";
+let browser = customEvents
+    | where name == "dictation.submission_finished"
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    // Empty too: a typed-only submission (no recording, so no session journey) has no
+    // area; the name is dictation's only.
+    | where area in ("dictation", "")
+    | extend source = "browser";
+union server, browser
+| extend outcome = tostring(customDimensions["hmcts.outcome"]),
+    code = tostring(customDimensions["hmcts.error.code"]),
+    ms = todouble(customDimensions["hmcts.duration_ms"])
+| summarize submissions = sum(itemCount), p50_ms = percentile(ms, 50), p95_ms = percentile(ms, 95)
+    by timestamp = bin(timestamp, 1d), source, outcome, code
+| order by timestamp asc, source asc, outcome asc

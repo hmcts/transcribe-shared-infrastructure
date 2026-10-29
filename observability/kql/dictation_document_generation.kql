@@ -1,0 +1,36 @@
+// Document generation outcomes and duration (DIAAT-284; stage from DIAAT-279), daily.
+//
+// Run against the environment's Application Insights resource (customEvents; one per
+// environment, no environment split). No parameters: the time range comes from the caller.
+//
+// Source: stage("document_generation") events "document_generation.completed",
+// "document_generation.failed", "document_generation.cancelled", by journey
+// (hmcts.journey.type):
+//   "dictation.submission"    - the decision document from a live dictation submission
+//                               (transcribe-api src/transcribe_api/api/routes_dictation.py,
+//                               cloud_RoleName transcribe-api; document.template
+//                               "decision"). Codes: "document.render_failed" (template
+//                               rendering), "document.store_failed" (generated, not stored).
+//   "dictation.transcription" - the transcript document of an uploaded recording
+//                               (src/transcribe_api/stt/pipeline.py, run by the upload
+//                               poller in transcribe-api-worker). Code:
+//                               "document.not_generated".
+// Area: dictation only (DIAAT-205, decision 1): hmcts.area, or the journey type's prefix.
+// Formula, per day, journey, outcome and code:
+//   runs = number of stage runs; p50_ms / p95_ms = percentiles of hmcts.duration_ms
+//   (stage time: render and store).
+//   Documents the user can actually open: "document.available" (dictation_workload_daily_volume.kql).
+// Caveats: not sampled. Percentiles come from events; the hmcts.stage.duration metric
+// (service_stage_duration_metric.kql) gives the unsampled count and average.
+customEvents
+| where name in ("document_generation.completed", "document_generation.failed", "document_generation.cancelled")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend journey = tostring(customDimensions["hmcts.journey.type"]),
+    outcome = tostring(customDimensions["hmcts.outcome"]),
+    code = tostring(customDimensions["hmcts.error.code"]),
+    ms = todouble(customDimensions["hmcts.duration_ms"])
+| summarize runs = sum(itemCount), p50_ms = percentile(ms, 50), p95_ms = percentile(ms, 95)
+    by timestamp = bin(timestamp, 1d), journey, outcome, code
+| order by timestamp asc, journey asc, outcome asc

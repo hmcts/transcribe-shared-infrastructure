@@ -1,0 +1,15 @@
+// Recording throughput: batch jobs completed per hour (DIAAT-281). Workload and capacity.
+//
+// Measure: transcripts completed per hour.
+// Formula: sum(value) of transcription.jobs.finished with hmcts.outcome == "success", per
+//   hour.
+// Source: counter transcription.jobs.finished, recording's own (metrics carry no area),
+//   never sampled (OD2).
+// Caveats: hours with no completions have no point. Completions depend on demand: low
+//   throughput with nothing waiting is not a capacity problem (compare
+//   recording_queue_jobs.kql).
+customMetrics
+| where name == "transcription.jobs.finished"
+| where tostring(customDimensions["hmcts.outcome"]) == "success"
+| summarize completed = sum(value) by bin(timestamp, 1h)
+| order by timestamp asc

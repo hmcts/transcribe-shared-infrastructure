@@ -1,0 +1,17 @@
+// Azure Speech concurrency utilisation, 15-minute bins (DIAAT-282). Recording:
+// workload and capacity.
+//
+// Measure: running recording batch jobs as a share of the Azure Speech concurrent-jobs
+//   limit.
+// Formula: 100 * max(value) per bin, across replicas and samples (100 = at the limit).
+// Source: gauge transcription.speech.concurrency.utilisation = running jobs /
+//   SPEECH_CONCURRENT_JOBS_LIMIT, exported by transcribe-api-worker. Recording-only
+//   metric, so no area filter: metric dimensions do not carry hmcts.area (decision 1).
+//   Never sampled (OD2).
+// Caveats: emitted ONLY when SPEECH_CONCURRENT_JOBS_LIMIT is set on the worker; no data
+//   means the limit is not configured. Max across replicas, never sum. Dictation's live
+//   Speech sessions are not counted against this limit here.
+customMetrics
+| where name == "transcription.speech.concurrency.utilisation"
+| summarize utilisation_pct = round(100.0 * max(value), 1) by bin(timestamp, 15m)
+| order by timestamp asc

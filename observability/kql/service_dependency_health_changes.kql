@@ -1,0 +1,14 @@
+// Dependency health changes (DIAAT-277): each up <-> down transition, newest first.
+// dependency.name: database, storage or speech. hmcts.error.code (when down):
+// dependency.timeout, dependency.auth_failed, dependency.unreachable or
+// dependency.error. Never a message, host or URL. Shared by both areas (no hmcts.area).
+customEvents
+| where name == "dependency.health_changed"
+| project
+    timestamp,
+    dependency = tostring(customDimensions["dependency.name"]),
+    state = tostring(customDimensions["dependency.state"]),
+    error_code = tostring(customDimensions["hmcts.error.code"]),
+    cloud_RoleName,
+    cloud_RoleInstance
+| order by timestamp desc

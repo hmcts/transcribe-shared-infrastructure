@@ -1,0 +1,29 @@
+// Upload size distribution (DIAAT-280). Recording pipeline (Phase 2): upload.
+//
+// Measure: how large uploaded recordings are, by audio format and outcome.
+// Formula: p50, p95 and max of file.size_bytes / 1 MiB over upload.completed and
+//   upload.failed events, by audio.format and hmcts.outcome, where hmcts.area ==
+//   "recording" (journey type prefix as fallback; dictation's upload stage emits the
+//   same events).
+// Source: upload stage events of POST /api/v1/uploads (transcribe-api; file.size_bytes
+//   = bytes received; audio.format = the extension, mp3/wav/mp4/m4a/ogg/flac). 100% of
+//   events (OD2).
+// Caveats: a file rejected for its type has no audio.format ("unknown"). Sizes are of
+//   the file as received, before transcoding to WAV.
+customEvents
+| where name in ("upload.completed", "upload.failed")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| extend
+    size_mb = todouble(customDimensions["file.size_bytes"]) / 1048576.0,
+    format = tostring(customDimensions["audio.format"]),
+    outcome = tostring(customDimensions["hmcts.outcome"])
+| where isnotnull(size_mb)
+| summarize
+    uploads = count(),
+    p50_mb = round(percentile(size_mb, 50), 1),
+    p95_mb = round(percentile(size_mb, 95), 1),
+    max_mb = round(max(size_mb), 1)
+    by format = iff(isempty(format), "unknown", format), outcome
+| order by uploads desc

@@ -1,0 +1,46 @@
+// Post-processing stage durations and failures (DIAAT-283). Recording pipeline
+// (Phase 2): post-processing.
+//
+// Measure: per step after Azure Speech succeeds: runs, failures, p50/p95/max duration.
+// Formula: per hmcts.stage, from the metric: runs = sum(valueCount); failed =
+//   sum(valueCount) where hmcts.outcome is failure or error; failure % = 100 * failed /
+//   runs; max_s = max(valueMax). From the events: p50/p95 of hmcts.duration_ms on
+//   <stage>.completed (successful runs only), where hmcts.area == "recording" (journey
+//   type prefix as fallback).
+// Source: histogram hmcts.stage.duration (s, never sampled, OD2) and the stage events,
+//   from the batch poller (transcribe-api-worker). The metric has no hmcts.area
+//   dimension (decision 1): hmcts.stage.duration is shared by both areas' stages, so it
+//   is limited to these stage names, which only recording uses. Stages:
+//   results_retrieval (download the transcript) -> transcript_postprocessing (speaker
+//   processing) -> transcript_persistence (save); result_processing is the umbrella for
+//   the whole attempt.
+// Caveats: a failed post-processing or save is retried on the next poll, so runs and
+//   failures count attempts, not jobs. No stitching step: one file per job (DIAAT-283).
+let stage_metric = customMetrics
+    | where name == "hmcts.stage.duration"
+    | extend
+        stage = tostring(customDimensions["hmcts.stage"]),
+        outcome = tostring(customDimensions["hmcts.outcome"])
+    | where stage in ("results_retrieval", "transcript_postprocessing", "transcript_persistence", "result_processing")
+    | summarize
+        runs = sum(valueCount),
+        failed = sumif(valueCount, outcome in ("failure", "error")),
+        max_s = max(valueMax)
+        by stage;
+let stage_events = customEvents
+    | where name in ("results_retrieval.completed", "transcript_postprocessing.completed", "transcript_persistence.completed", "result_processing.completed")
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "recording"
+    | extend
+        stage = tostring(customDimensions["hmcts.stage"]),
+        seconds = todouble(customDimensions["hmcts.duration_ms"]) / 1000.0
+    | summarize p50_s = round(percentile(seconds, 50), 2), p95_s = round(percentile(seconds, 95), 2) by stage;
+stage_metric
+| join kind=leftouter stage_events on stage
+| extend
+    failure_pct = round(iff(runs > 0, 100.0 * failed / runs, real(null)), 2),
+    max_s = round(max_s, 2),
+    stage_order = case(stage == "results_retrieval", 1, stage == "transcript_postprocessing", 2, stage == "transcript_persistence", 3, 4)
+| order by stage_order asc
+| project stage, runs, failed, failure_pct, p50_s, p95_s, max_s

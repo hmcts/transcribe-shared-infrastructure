@@ -1,0 +1,66 @@
+// Dictation start and resume latency, p50 and p95 (DIAAT-284; events from OBS-4:
+// DIAAT-278 / DIAAT-300), hourly.
+//
+// Run against the environment's Application Insights resource (customEvents; one per
+// environment, no environment split). No parameters: the time range comes from the caller.
+//
+// Source: browser events of the "dictation.session" journey (transcribe-web
+// lib/dictation-session.ts, relayed by transcribe-api's POST /api/telemetry).
+// Area: dictation only (DIAAT-205, decision 1). Relayed browser events carry no hmcts.area,
+// so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
+// Measures (milliseconds measured in the browser, on hmcts.duration_ms):
+//   start_to_ready      = "speech.session_started": recording requested -> Azure Speech
+//                         session ready (token, microphone, SDK connection).
+//   start_to_first_text = "speech.first_result": recording requested -> first transcript
+//                         text. Includes the time before the user starts speaking.
+//   resume_to_next_text = "dictation.resume_first_result": resume after a pause -> first
+//                         text after it. Includes the time before the user speaks again.
+// start_kind:
+//   user      = a recording the user started (dictation.reconnect_attempt 0);
+//   reconnect = an automatic reconnect after the Speech session dropped;
+//   resume    = resume_to_next_text (always after a user resume);
+//   unknown   = the matching "dictation.session_requested" was not received.
+//   speech.session_started carries dictation.reconnect_attempt itself; speech.first_result
+//   takes it from the "dictation.session_requested" event of the same journey
+//   (hmcts.journey.id) and dictation.session_index.
+// Formula: percentile(hmcts.duration_ms, 50 | 95) per hour, measure and start_kind.
+// Caveats:
+//   - percentiles come from events, not metrics: the App Insights exporter sends the
+//     hmcts.event.duration histogram as count/sum/min/max only, so it gives averages and
+//     maxima, not percentiles.
+//   - customEvents are not sampled (sampling_percentage = 100, DIAAT-205 OD2), but a
+//     browser that closes before its batch is sent loses its events (a lower bound on
+//     volume), and a throttled background tab can stretch browser-measured durations.
+let requested = customEvents
+    | where name == "dictation.session_requested"
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "dictation"
+    | extend journey_id = tostring(customDimensions["hmcts.journey.id"]),
+        session_index = toint(customDimensions["dictation.session_index"]),
+        reconnect_attempt = toint(customDimensions["dictation.reconnect_attempt"])
+    | summarize reconnect_attempt = max(reconnect_attempt) by journey_id, session_index;
+customEvents
+| where name in ("speech.session_started", "speech.first_result", "dictation.resume_first_result")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend journey_id = tostring(customDimensions["hmcts.journey.id"]),
+    session_index = toint(customDimensions["dictation.session_index"]),
+    own_attempt = toint(customDimensions["dictation.reconnect_attempt"]),
+    ms = todouble(customDimensions["hmcts.duration_ms"])
+| where isnotnull(ms)
+| join kind=leftouter requested on journey_id, session_index
+| extend attempt = coalesce(own_attempt, reconnect_attempt)
+| extend measure = case(
+        name == "speech.session_started", "start_to_ready",
+        name == "speech.first_result", "start_to_first_text",
+        "resume_to_next_text"),
+    start_kind = case(
+        name == "dictation.resume_first_result", "resume",
+        isnull(attempt), "unknown",
+        attempt == 0, "user",
+        "reconnect")
+| summarize p50_ms = percentile(ms, 50), p95_ms = percentile(ms, 95), samples = count()
+    by timestamp = bin(timestamp, 1h), measure, start_kind
+| order by timestamp asc, measure asc, start_kind asc

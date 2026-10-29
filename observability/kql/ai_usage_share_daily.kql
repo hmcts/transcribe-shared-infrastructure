@@ -1,0 +1,48 @@
+// AI usage share by feature per day: the input to cost allocation (OBS-5).
+// Both areas: metrics carry no hmcts.area; the feature and Speech mode tell them apart.
+//
+// Run against the environment's Application Insights resource (customMetrics). No
+// parameters: the time range comes from the caller. cost_allocation.kql uses this query
+// as its usage_share() function.
+//
+// Usage is grouped the way it is billed:
+//   meter_group "azure_llm"    - tokens of Azure-hosted models (gen_ai.provider.name
+//                                starting "azure": Azure OpenAI GPT-4o and Grok);
+//   meter_group "gcp_llm"      - tokens of Google models (provider starting "gcp": Vertex AI);
+//   meter_group "other_llm"    - any other provider (none today);
+//   meter_group "azure_speech" - audio seconds sent to Azure Speech (as ai_audio_hours_daily.kql).
+// unit: the token type ("input", "output") or the Speech mode ("fast", "batch",
+// "realtime"): dictation uploads, recording jobs and live dictation.
+// Formula, per day, meter group, unit and feature: units = tokens or seconds;
+//   share_of_unit  = units / all units of that meter group and unit that day;
+//   share_of_group = units / all units of that meter group that day (for bill lines that
+//                    cannot be told apart by unit).
+// Caveats: usage only, no cost. A day with no usage in a group has no share (its bill is
+// unallocated). The dictation figure is browser-reported (see ai_audio_hours_daily.kql).
+let llm = customMetrics
+    | where name == "gen_ai.client.token.usage"
+    | extend provider = tostring(customDimensions["gen_ai.provider.name"])
+    | project timestamp,
+        meter_group = case(provider startswith "azure", "azure_llm", provider startswith "gcp", "gcp_llm", "other_llm"),
+        unit = tostring(customDimensions["gen_ai.token.type"]),
+        feature = tostring(customDimensions["hmcts.ai.feature"]),
+        units = valueSum;
+let metered_audio = customMetrics
+    | where name == "hmcts.speech.audio.duration"
+    | project timestamp, meter_group = "azure_speech", unit = tostring(customDimensions["hmcts.speech.mode"]),
+        feature = tostring(customDimensions["hmcts.ai.feature"]), units = valueSum;
+let dictation_audio = customMetrics
+    | where name == "hmcts.event.duration"
+    | where tostring(customDimensions["event"]) == "speech.session_stopped"
+        and tostring(customDimensions["source"]) == "browser"
+    | project timestamp, meter_group = "azure_speech", unit = "realtime", feature = "dictation", units = valueSum;
+let daily = union llm, metered_audio, dictation_audio
+    | summarize units = sum(units) by timestamp = bin(timestamp, 1d), meter_group, unit, feature;
+daily
+| join kind=inner (daily | summarize unit_total = sum(units) by timestamp, meter_group, unit) on timestamp, meter_group, unit
+| join kind=inner (daily | summarize group_total = sum(units) by timestamp, meter_group) on timestamp, meter_group
+| where group_total > 0
+| project timestamp, meter_group, unit, feature, units,
+    share_of_unit = iff(unit_total > 0, round(units / unit_total, 6), real(null)),
+    share_of_group = round(units / group_total, 6)
+| order by timestamp asc, meter_group asc, unit asc, units desc

@@ -1,0 +1,38 @@
+// Uploaded-audio jobs by outcome and transcription time (DIAAT-284; DIAAT-276), daily.
+//
+// Run against the environment's Application Insights resource (customEvents). No
+// parameters: the time range comes from the caller.
+//
+// Sources (transcribe-api stt/pipeline.py, run by TranscriptionPollingService for each
+// uploaded file, journey "dictation.transcription"; job.finished is also recording's,
+// so filtered to the dictation area):
+//   "job.finished"            - one per job: hmcts.outcome success | failure | error |
+//                               cancelled, hmcts.error.code "<step>.failed" or the most
+//                               significant degraded part ("minutes.failed",
+//                               "document.not_generated", "title.failed",
+//                               "notification.email_failed");
+//   "transcription.completed" - Azure Speech transcription stage, hmcts.duration_ms;
+//   "minutes_generation.completed" - LLM minutes stage, hmcts.duration_ms.
+// Formula, per day: jobs by outcome and code; p50/p95 of the stage durations (successful
+// runs only) in seconds.
+// Caveats: not sampled. No audio duration is recorded for uploaded files, so time per
+// audio hour cannot be computed. Jobs waiting to be picked up by the poller are not visible.
+let dictation = customEvents
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "dictation";
+let jobs = dictation
+    | where name == "job.finished"
+    | extend outcome = tostring(customDimensions["hmcts.outcome"]),
+        code = tostring(customDimensions["hmcts.error.code"])
+    | summarize value = todouble(sum(itemCount)) by timestamp = bin(timestamp, 1d),
+        measure = strcat("jobs ", outcome, iff(isempty(code), "", strcat(" (", code, ")")));
+let stages = dictation
+    | where name in ("transcription.completed", "minutes_generation.completed")
+    | extend s = todouble(customDimensions["hmcts.duration_ms"]) / 1000.0,
+        stage = tostring(customDimensions["hmcts.stage"])
+    | summarize p50 = percentile(s, 50), p95 = percentile(s, 95) by timestamp = bin(timestamp, 1d), stage
+    | mv-expand pct = pack_array("p50", "p95") to typeof(string)
+    | project timestamp, measure = strcat(stage, " ", pct, " s"), value = round(iff(pct == "p50", p50, p95), 1);
+union jobs, stages
+| order by timestamp asc, measure asc

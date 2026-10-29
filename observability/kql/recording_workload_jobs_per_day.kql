@@ -1,0 +1,21 @@
+// Jobs per day: created and finished by outcome (DIAAT-281). Workload and capacity.
+//
+// Measure: daily job volume in, and out by outcome.
+// Formula: created = count of job.created per day; finished = sum(value) of
+//   transcription.jobs.finished per day, by hmcts.outcome (success, failure, error).
+// Source: job.created events in the recording area (100%, OD2) and the unsampled
+//   transcription.jobs.finished counter (recording's own metric: metrics carry no area).
+// Caveats: a job created on one day may finish on another. A job submitted twice with
+//   the same idempotency key is created once.
+union
+    (customEvents
+    | where name == "job.created"
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "recording"
+    | summarize jobs = todouble(count()) by day = bin(timestamp, 1d)
+    | extend series = "created"),
+    (customMetrics
+    | where name == "transcription.jobs.finished"
+    | summarize jobs = sum(value) by day = bin(timestamp, 1d), series = strcat("finished: ", tostring(customDimensions["hmcts.outcome"])))
+| order by day asc

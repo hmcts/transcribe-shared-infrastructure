@@ -1,0 +1,26 @@
+// Post-processing stage failures by code (DIAAT-283). Recording pipeline (Phase 2):
+// post-processing.
+//
+// Measure: why the steps after Azure Speech failed.
+// Formula: count of <stage>.failed events by hmcts.stage, hmcts.outcome and
+//   hmcts.error.code, with the last occurrence, where hmcts.area == "recording"
+//   (journey type prefix as fallback).
+// Source: stage events from the batch poller (transcribe-api-worker), 100% (OD2).
+//   Codes: speech.results_invalid, speech.results_unavailable, speech.results_error
+//   (retrieval: Azure's side), transcript.postprocess_failed (our code),
+//   storage.db_unavailable, storage.db_rejected, storage.db_failed (save),
+//   unhandled.<Type>.
+// Caveats: result_processing.failed repeats the failing step's code, so it is left out.
+//   Attempts, not jobs: a failed save or post-processing is retried on the next poll.
+customEvents
+| where name in ("results_retrieval.failed", "transcript_postprocessing.failed", "transcript_persistence.failed")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| summarize
+    failures = count(),
+    last_seen = max(timestamp)
+    by stage = tostring(customDimensions["hmcts.stage"]),
+       outcome = tostring(customDimensions["hmcts.outcome"]),
+       error_code = tostring(customDimensions["hmcts.error.code"])
+| order by failures desc

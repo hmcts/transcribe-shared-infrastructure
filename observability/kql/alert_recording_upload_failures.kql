@@ -1,0 +1,19 @@
+// ALERT (DIAAT-285): a spike in failed recording uploads.
+//
+// Measure: upload.failed events in the window (POST /api/v1/uploads), by outcome and
+//   code, where hmcts.area == "recording" (journey type prefix as fallback; dictation's
+//   upload stage emits the same event): error = server-side (storage.write_failed,
+//   unhandled.<Type>); failure = the file was rejected (upload.unsupported_format,
+//   upload.too_large, upload.undecodable, http.4xx).
+// Fires when failures > alert_thresholds.upload_failures for any outcome and code.
+// Output (AC3): the outcome, the code and a count. Never file names (not recorded).
+customEvents
+| where name == "upload.failed"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| extend
+    outcome = tostring(customDimensions["hmcts.outcome"]),
+    error_code = tostring(customDimensions["hmcts.error.code"])
+| summarize failures = count() by outcome, error_code
+| project outcome, error_code, failures

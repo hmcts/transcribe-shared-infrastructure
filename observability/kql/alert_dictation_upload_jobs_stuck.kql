@@ -1,0 +1,27 @@
+// Alert query (DIAAT-285): uploaded-audio jobs started in the alert window that have not
+// finished. Used by the "upload-jobs-stuck" alert (measure: oldest_waiting_min, Maximum;
+// heritage threshold 120 minutes over a 6-hour window).
+//
+// Source (DIAAT-276): a job is the journey "dictation.transcription", run by the dictation
+// upload poller in transcribe-api-worker; "transcription.started" when the poller picks
+// the file up, exactly one "job.finished" when it ends, whatever the outcome. A job with
+// no end is still running, or was lost (instance restarted or crashed mid-job).
+// Area: dictation only (DIAAT-205, decision 1). job.finished is also recording's batch
+// job event, so the area filter is required: hmcts.area, or the journey type's prefix.
+// Output: one row, stuck = unfinished jobs, oldest_waiting_min = age in minutes of the
+// oldest of them (empty when none; no ID). Heritage output was one row per job with
+// age_minutes; the Maximum is the same.
+// Caveat: jobs waiting for the poller (uploaded, not picked up) are not visible: there is
+// no queue metric in Phase 1.
+customEvents
+| where name in ("transcription.started", "job.finished")
+| where tostring(customDimensions["hmcts.journey.type"]) == "dictation.transcription"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| summarize started = minif(timestamp, name == "transcription.started"),
+    finished = countif(name == "job.finished")
+    by journey_id = tostring(customDimensions["hmcts.journey.id"])
+| where isnotnull(started) and finished == 0
+| summarize stuck = count(), oldest_waiting_min = round((now() - min(started)) / 1m, 0)
+| project stuck, oldest_waiting_min

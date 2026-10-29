@@ -1,0 +1,27 @@
+// Uploaded-audio jobs in progress, estimated (DIAAT-284; DIAAT-276), per 5 minutes.
+//
+// Run against the environment's Application Insights resource (customEvents). No
+// parameters: the time range comes from the caller.
+//
+// A job is the journey "dictation.transcription" (hmcts.journey.id = transcription ID):
+//   start = "transcription.started" (the poller has picked up the file);
+//   end   = "job.finished" (every job ends with exactly one), or now if not yet finished;
+//   capped at 6 hours (a job with no end after that is treated as lost).
+// Formula: active_jobs = jobs whose [start, end] overlaps the 5-minute slot.
+// Caveats: an estimate. Jobs started before the time range are not counted. Jobs
+// waiting for the poller (uploaded, not picked up) are not visible: there is no queue
+// metric, and direct-to-storage uploads send no event when the file arrives.
+customEvents
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| where name in ("transcription.started", "job.finished")
+| where tostring(customDimensions["hmcts.journey.type"]) == "dictation.transcription"
+| summarize start = minif(timestamp, name == "transcription.started"),
+    finish = maxif(timestamp, name == "job.finished")
+    by journey_id = tostring(customDimensions["hmcts.journey.id"])
+| where isnotnull(start)
+| extend finish = min_of(iff(isnull(finish) or finish < start, now(), finish), start + 6h)
+| mv-expand slot = range(bin(start, 5m), finish, 5m) to typeof(datetime) limit 100
+| summarize active_jobs = count() by timestamp = slot
+| order by timestamp asc

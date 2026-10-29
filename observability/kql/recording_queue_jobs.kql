@@ -1,0 +1,23 @@
+// Waiting, running and stuck jobs (DIAAT-281), 15-minute bins. Used by the recording
+// pipeline view (queue) and the workload view (active and waiting jobs).
+//
+// Measure: the recording job "queue": jobs not yet processed by Azure Speech (waiting),
+//   being processed (running = active), and past their stuck threshold, by state.
+// Formula: max(value) per bin and series, across replicas and samples.
+// Source: observable gauges transcription.jobs.waiting, transcription.jobs.running and
+//   transcription.jobs.stuck (job.state waiting/running), computed from the
+//   transcription_job table on each 60 s export by transcribe-api-worker (registered
+//   with the pollers). Recording-only metrics, so no area filter: metric dimensions do
+//   not carry hmcts.area (decision 1). Metrics: never sampled (OD2).
+// Caveats: every replica reports the same database-wide value, so aggregate with MAX,
+//   never sum (sum multiplies by the replica count). Max per bin is the peak in the
+//   bin. There is no message queue: "queue" means unfinished rows in the table.
+//   transcription.jobs.queue_depth (waiting + running) is not shown: it is the sum.
+customMetrics
+| where name in ("transcription.jobs.waiting", "transcription.jobs.running", "transcription.jobs.stuck")
+| extend series = case(
+    name == "transcription.jobs.waiting", "waiting",
+    name == "transcription.jobs.running", "running (active)",
+    strcat("stuck ", tostring(customDimensions["job.state"])))
+| summarize jobs = max(value) by bin(timestamp, 15m), series
+| order by timestamp asc

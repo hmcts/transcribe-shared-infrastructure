@@ -1,0 +1,32 @@
+// Time to transcript available and end to end, p50/p95 by day (DIAAT-281, DIAAT-283).
+// Recording pipeline (Phase 2): transcript availability.
+//
+// Measure: to_available = Azure Speech finished -> transcript saved and readable;
+//   end_to_end = job created -> transcript available (successful jobs).
+// Formula: p50 and p95 of hmcts.duration_ms / 60000, per day, in minutes:
+//   to_available from transcript.available; end_to_end from job.finished with
+//   hmcts.outcome == "success".
+// Source: transcript.available and job.finished events from the recording batch
+//   pipeline (transcribe-api-worker), 100% (OD2). Both names are also emitted by
+//   dictation, so the query keeps hmcts.area == "recording" (journey type prefix as
+//   fallback). Metric equivalent (count/avg/max, no area dimension):
+//   transcription.job.duration phases to_available and end_to_end.
+// Caveats: to_available includes poll lag (up to one 30 s interval), download,
+//   post-processing, the save and any failed attempts before it. End to end starts at
+//   job creation, after the upload: add recording_upload_duration.kql for the upload.
+let durations = customEvents
+    | where name in ("transcript.available", "job.finished")
+    | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+        tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+    | where area == "recording"
+    | extend
+        outcome = tostring(customDimensions["hmcts.outcome"]),
+        minutes = todouble(customDimensions["hmcts.duration_ms"]) / 60000.0
+    | where name == "transcript.available" or outcome == "success"
+    | where isnotnull(minutes)
+    | extend measure = iff(name == "transcript.available", "to_available", "end_to_end");
+union
+    (durations | summarize minutes = percentile(minutes, 50) by day = bin(timestamp, 1d), measure | extend series = strcat(measure, " p50")),
+    (durations | summarize minutes = percentile(minutes, 95) by day = bin(timestamp, 1d), measure | extend series = strcat(measure, " p95"))
+| project day, series, minutes = round(minutes, 1)
+| order by day asc, series asc

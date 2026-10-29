@@ -1,0 +1,27 @@
+// AI usage: fallback and error rate of LLM calls, by feature (OBS-5).
+//
+// Run against the environment's Application Insights resource (customMetrics). No
+// parameters: the time range comes from the caller. Covers both areas; metrics carry no
+// hmcts.area, so the feature and mode tell them apart.
+//
+// Source: the hmcts.ai.requests counter (hmcts-otel), one per model call, with
+// hmcts.ai.feature, hmcts.ai.fallback, hmcts.outcome and gen_ai.* (no token type).
+// A fallback is a call to another model after the requested one failed: Azure Grok, then
+// Azure GPT-4o, after Gemini; or litellm's switch to a smaller Gemini model. Retrying the
+// same model, or the same model in another EU region, is not a fallback.
+// Formula, per feature: calls = sum(valueSum); fallback_pct = fallback calls / calls;
+// error_pct = calls with hmcts.outcome "error" / calls.
+// Caveats: every attempt is a call, so a request answered by a fallback counts its failed
+// attempts too. litellm logs only the first failure of its own (SDK) fallback chain, so
+// errors inside that chain are a lower bound. Assumes delta temporality.
+customMetrics
+| where name == "hmcts.ai.requests"
+| extend feature = tostring(customDimensions["hmcts.ai.feature"]),
+    fallback = tobool(customDimensions["hmcts.ai.fallback"]),
+    outcome = tostring(customDimensions["hmcts.outcome"])
+| summarize calls = sum(valueSum), fallback_calls = sumif(valueSum, fallback),
+    error_calls = sumif(valueSum, outcome == "error")
+    by feature
+| extend fallback_pct = round(100.0 * fallback_calls / calls, 1), error_pct = round(100.0 * error_calls / calls, 1)
+| project feature, calls, fallback_calls, fallback_pct, error_calls, error_pct
+| order by calls desc

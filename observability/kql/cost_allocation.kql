@@ -1,0 +1,78 @@
+// AI cost allocated to features by usage share, per day (OBS-5), for both areas.
+//
+// NOT RUNNABLE AS IS. Usage telemetry has no prices; cost is the actual cost from the
+// Azure (and GCP) billing exports, split by each feature's share of that day's usage.
+// The exports do not exist yet (PlatOps). Until they do, the workbook shows a note saying
+// so instead of this query (billing_export_configured = false). When it is true, the
+// workbook's Terraform fills in the placeholders below and defines usage_share() as
+// ai_usage_share_daily.kql. To run it by hand, do the same:
+//   let usage_share = () { <ai_usage_share_daily.kql> };  (first line), and replace:
+//
+// PLACEHOLDERS (all upper case, replaced by the workbook's Terraform):
+//   AZURE_BILLING_EXPORT  - the table holding the Azure Cost Management export, e.g.
+//                           workspace("<workspace resource ID>").AzureCostExport_CL
+//                           (var.azure_billing_export_source).
+//   GCP_BILLING_EXPORT    - the table holding the GCP billing export, or nothing
+//                           (var.gcp_billing_export_source; empty: an empty table).
+//   BILLING_RESOURCE_IDS  - JSON list of the Azure resource IDs whose cost is allocated:
+//                           the Azure OpenAI / AI Foundry (GPT-4o, Grok) and Speech
+//                           resources of this environment (var.billing_resource_ids).
+//
+// Expected columns, Azure: the Cost Management export "Cost and usage details (actual
+// cost)", daily, landed in Log Analytics by PlatOps:
+//   Date (datetime: the usage day), MeterCategory, MeterSubCategory, MeterName,
+//   ResourceId (strings), CostInBillingCurrency (real), BillingCurrency (string).
+// Expected columns, GCP: the Cloud Billing export to BigQuery (standard usage cost),
+// copied into Log Analytics with the nested fields flattened:
+//   usage_start_time (datetime), service_description (string: Vertex AI rows are used),
+//   sku_description (string), cost (real), currency (string).
+//
+// Bill line -> usage (edit the case() rules if the export's meter names differ):
+//   Azure, a Speech meter (sub-category or meter name has "Speech"): meter group
+//     azure_speech; meter name has "Fast": unit fast (dictation uploads); "Batch":
+//     unit batch (recording jobs); otherwise realtime (live dictation).
+//   Azure, any other meter of those resources: azure_llm; meter name has "Inp" or
+//     "Input": unit input; "Outp" or "Output": unit output; otherwise any.
+//   GCP, Vertex AI: gcp_llm; SKU has "Input": input; "Output": output; otherwise any.
+// Formula, per day: allocated_cost = cost of the bill lines of a meter group and unit x
+// the feature's share_of_unit (unit "any": share_of_group). A day with bill lines but no
+// usage is "unallocated".
+// Caveats: Azure exports arrive a day or more late and can be restated; use whole days in
+// the past. Shares use the dictation estimate for realtime Speech.
+let azure_billing = AZURE_BILLING_EXPORT
+    | where tostring(ResourceId) in~ (dynamic(BILLING_RESOURCE_IDS))
+    | extend meter = tostring(MeterName), subcategory = tostring(MeterSubCategory)
+    | extend meter_group = iff(subcategory has "Speech" or meter has "Speech", "azure_speech", "azure_llm")
+    | project day = startofday(todatetime(Date)), meter_group,
+        unit = case(
+            meter_group == "azure_speech" and meter has "Fast", "fast",
+            meter_group == "azure_speech" and meter has "Batch", "batch",
+            meter_group == "azure_speech", "realtime",
+            meter matches regex @"(?i)\b(inp|input)\b", "input",
+            meter matches regex @"(?i)\b(outp|output)\b", "output",
+            "any"),
+        cost = todouble(CostInBillingCurrency), currency = tostring(BillingCurrency);
+let gcp_billing = GCP_BILLING_EXPORT
+    | where tostring(service_description) == "Vertex AI"
+    | extend sku = tostring(sku_description)
+    | project day = startofday(todatetime(usage_start_time)), meter_group = "gcp_llm",
+        unit = case(sku has "Input", "input", sku has "Output", "output", "any"),
+        cost = todouble(cost), currency = tostring(currency);
+let bill = union azure_billing, gcp_billing
+    | summarize cost = sum(cost) by day, meter_group, unit, currency;
+let shares = usage_share()
+    | project day = timestamp, meter_group, unit, feature, share = share_of_unit;
+let group_shares = usage_share()
+    | summarize share = sum(share_of_group) by day = timestamp, meter_group, feature
+    | extend unit = "any";
+let by_unit = bill
+    | where unit != "any"
+    | join kind=leftouter shares on day, meter_group, unit;
+let by_group = bill
+    | where unit == "any"
+    | join kind=leftouter group_shares on day, meter_group, unit;
+union by_unit, by_group
+| extend share = iff(isempty(feature), 1.0, share)
+| extend feature = iff(isempty(feature), "unallocated", feature)
+| summarize allocated_cost = round(sum(cost * share), 2) by day, meter_group, feature, currency
+| order by day asc, meter_group asc, allocated_cost desc

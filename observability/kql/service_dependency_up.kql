@@ -1,0 +1,14 @@
+// Dependency health (DIAAT-277): service.dependency.up by dependency, 15-minute bins.
+//
+// dependency.name: database (PostgreSQL), storage (Azure Blob Storage) or speech
+// (Azure Speech). The gauge is 1 when the last check succeeded and 0 when it failed;
+// min() over instances and the bin: 0 means at least one API instance saw the
+// dependency down. The checker runs in the API process (transcribe-api), every
+// DEPENDENCY_HEALTH_INTERVAL_SECONDS, Azure Speech at most every 5 minutes. No points:
+// not checked. Shared by both areas (no hmcts.area). Changes are also events:
+// service_dependency_health_changes.kql.
+customMetrics
+| where name == "service.dependency.up"
+| extend dependency = tostring(customDimensions["dependency.name"])
+| summarize up = min(value) by timestamp = bin(timestamp, 15m), dependency
+| order by timestamp asc, dependency asc

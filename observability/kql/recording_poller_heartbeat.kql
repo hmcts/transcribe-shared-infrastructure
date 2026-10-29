@@ -1,0 +1,12 @@
+// Job queue health (DIAAT-277): the recording batch polling loop's heartbeat, 15-minute
+// bins. transcription.poller.last_success_age = seconds since the loop last completed a
+// poll (or since it started). It rises past a few poll intervals
+// (BATCH_POLL_INTERVAL_SECONDS, 30 s) only when the loop is stuck or every poll fails.
+// Max per replica: the worst. The loop runs in transcribe-api-worker (the gauge is
+// registered with the pollers), so replicas are cloud_RoleInstance of that service.
+// Recording-only metric, so no area filter: metric dimensions do not carry hmcts.area
+// (decision 1). Dictation's poller has no heartbeat metric.
+customMetrics
+| where name == "transcription.poller.last_success_age"
+| summarize last_success_age_s = max(value) by bin(timestamp, 15m), cloud_RoleInstance
+| order by timestamp asc

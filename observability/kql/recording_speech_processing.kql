@@ -1,0 +1,26 @@
+// Azure Speech processing time p50/p95 by day (DIAAT-281, DIAAT-282). Recording
+// pipeline (Phase 2): Speech.
+//
+// Measure: time Azure Speech took to process a recording batch job.
+// Formula: p50 and p95 of job.processing_ms / 60000 on job.finished, per day, in
+//   minutes, over jobs that have it (success and error), where hmcts.area ==
+//   "recording" (journey type prefix as fallback; dictation also emits job.finished).
+// Source: job.finished (one per job, from transcribe-api-worker), job.processing_ms =
+//   Azure processing started -> Azure finished (its lastActionDateTime). 100% of events
+//   (OD2). Metric equivalent: transcription.job.duration phase processing
+//   (recording_job_duration_metric.kql).
+// Caveats: absent for jobs that never reached Azure, and for jobs Azure finished
+//   between two polls (processing start unknown).
+customEvents
+| where name == "job.finished"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| extend minutes = todouble(customDimensions["job.processing_ms"]) / 60000.0
+| where isnotnull(minutes)
+| summarize
+    p50_min = round(percentile(minutes, 50), 1),
+    p95_min = round(percentile(minutes, 95), 1),
+    jobs = count()
+    by day = bin(timestamp, 1d)
+| order by day asc

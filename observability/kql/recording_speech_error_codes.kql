@@ -1,0 +1,22 @@
+// Azure Speech's own error codes (DIAAT-282). Recording pipeline (Phase 2): Speech.
+//
+// Measure: what Azure Speech said when a recording batch job or call failed.
+// Formula: count of events carrying speech.error_code, by event, speech.error_code and
+//   http.response.status_code, where hmcts.area == "recording" (journey type prefix as
+//   fallback; dictation also emits job.finished).
+// Source: job.finished (failed jobs), job.retried and job.poll_failed. speech.error_code
+//   is Azure's code (properties.error.code of a Failed job, or the code of an HTTP
+//   error body, e.g. InvalidData), never its message. 100% of events (OD2).
+// Caveats: absent when Azure sent no parsable code.
+customEvents
+| where name in ("job.finished", "job.retried", "job.poll_failed")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| extend speech_error_code = tostring(customDimensions["speech.error_code"])
+| where isnotempty(speech_error_code)
+| summarize
+    events = count(),
+    last_seen = max(timestamp)
+    by event = name, speech_error_code, http_status = tostring(customDimensions["http.response.status_code"])
+| order by events desc

@@ -1,0 +1,20 @@
+// HTTP server error rate (DIAAT-277): share of server requests that were unavailable,
+// hourly, per service and area. The same definition and exclusions as
+// service_availability_endpoint.kql: 5xx, or failed with no status; health probes and
+// synthetic traffic excluded; 4xx are client errors and are not counted.
+requests
+| where isempty(operation_SyntheticSource)
+| extend path = tolower(tostring(parse_url(url).Path))
+| where not(path matches regex @"(^|/)(health|healthz|healthcheck|livez|readyz|version)(/|$)")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    case(path in ("/api/telemetry", "/api/openapi.json"), "",
+        path == "/api/v1" or path startswith "/api/v1/", "recording",
+        path startswith "/api/", "dictation", ""))
+| extend status = toint(resultCode)
+| summarize
+    requests = sum(itemCount),
+    server_errors = sumif(itemCount, status >= 500 or ((isnull(status) or status == 0) and success == false))
+    by timestamp = bin(timestamp, 1h), cloud_RoleName, area
+| extend server_error_pct = round(100.0 * server_errors / requests, 3)
+| project timestamp, cloud_RoleName, area, server_error_pct, requests, server_errors
+| order by timestamp asc, cloud_RoleName asc, area asc

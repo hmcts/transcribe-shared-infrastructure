@@ -1,0 +1,28 @@
+// Dictation hours per day (DIAAT-284; events from OBS-4).
+//
+// Run against the environment's Application Insights resource (customEvents). No
+// parameters: the time range comes from the caller.
+//
+// Two measures, both from browser-measured durations (hmcts.duration_ms):
+//   session_hours = sum over "dictation.session_ended" of the session length (first
+//                   recording request -> end): wall-clock time with the dictation page in
+//                   use, including pauses and form filling.
+//   speech_hours  = sum over "speech.session_stopped" of the Speech session length: time
+//                   connected to Azure Speech, i.e. the closest measure of audio dictated
+//                   (and of Speech usage).
+// Formula: sum(hmcts.duration_ms) / 3,600,000 per day (the day the event was received).
+// Caveats: no audio duration is recorded for live dictation; these are proxies. Events
+// lost with a closed browser are missing (lower bound). The relay caps one duration at
+// 24 hours.
+customEvents
+| where name in ("dictation.session_ended", "speech.session_stopped")
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend ms = todouble(customDimensions["hmcts.duration_ms"])
+| summarize
+    session_hours = round(sumif(ms, name == "dictation.session_ended") / 3600000.0, 2),
+    speech_hours = round(sumif(ms, name == "speech.session_stopped") / 3600000.0, 2),
+    sessions = sumif(itemCount, name == "dictation.session_ended")
+    by timestamp = bin(timestamp, 1d)
+| order by timestamp asc

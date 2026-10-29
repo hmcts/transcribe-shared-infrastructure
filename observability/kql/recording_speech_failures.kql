@@ -1,0 +1,20 @@
+// Azure Speech call failures by operation and code, hourly (DIAAT-282). Recording
+// pipeline (Phase 2): Speech.
+//
+// Measure: failed batch HTTP calls to Azure Speech and why.
+// Formula: sum(value) of transcription.speech.call.failures per hour, by
+//   speech.operation and hmcts.error.code.
+// Source: counter transcription.speech.call.failures, emitted only by the recording
+//   batch client, so no area filter: metric dimensions do not carry hmcts.area
+//   (decision 1). Codes: speech.throttled (429), speech.http_<status>, speech.timeout,
+//   speech.connect_error, speech.transport_error, speech.results_invalid,
+//   unhandled.<Type>. Never sampled (OD2).
+// Caveats: counts calls, not jobs: a job whose call is retried and then succeeds still
+//   shows its failed attempts here.
+customMetrics
+| where name == "transcription.speech.call.failures"
+| extend series = strcat(
+    tostring(customDimensions["speech.operation"]), " ",
+    tostring(customDimensions["hmcts.error.code"]))
+| summarize failures = sum(value) by bin(timestamp, 1h), series
+| order by timestamp asc

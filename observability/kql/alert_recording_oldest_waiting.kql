@@ -1,0 +1,14 @@
+// ALERT (DIAAT-285): the oldest waiting recording job has waited too long (excessive
+// queue age).
+//
+// Measure: the peak of transcription.jobs.oldest_waiting_age in the window, in minutes
+//   (0 when nothing waits). Max across replicas, never sum. Exported by
+//   transcribe-api-worker; recording-only metric, so no area filter: metric dimensions
+//   do not carry hmcts.area (decision 1).
+// Fires when oldest_waiting_min > alert_thresholds.oldest_waiting_minutes. Set below
+//   JOB_STUCK_WAITING_SECONDS (30 min) so it warns before jobs are reported stuck.
+// Output (AC3): one number of minutes.
+customMetrics
+| where name == "transcription.jobs.oldest_waiting_age"
+| summarize oldest_waiting_min = round(max(value) / 60.0, 1)
+| project oldest_waiting_min

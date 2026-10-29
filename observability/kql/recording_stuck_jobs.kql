@@ -1,0 +1,27 @@
+// Stuck jobs (DIAAT-281). Recording pipeline (Phase 2): queue.
+//
+// Measure: each recording batch job that waited or ran longer than its threshold,
+//   newest first.
+// Formula: one row per job.stuck event (emitted once per job, whatever the replicas),
+//   where hmcts.area == "recording" (journey type prefix as fallback).
+// Source: job.stuck from the batch poller (transcribe-api-worker): job.state (waiting =
+//   never started by Azure Speech; running = started, not finished),
+//   hmcts.failure.source (waiting: queue; running: dependency), hmcts.duration_ms = time
+//   in that state so far. Thresholds: JOB_STUCK_WAITING_SECONDS and
+//   JOB_STUCK_RUNNING_SECONDS in the API's settings.
+// Caveats: observation only; a stuck job is not failed or retried by this. The job ID
+//   (hmcts.journey.id) and Azure Speech job ID (hmcts.dependency.ref) are
+//   system-generated, never case references.
+customEvents
+| where name == "job.stuck"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "recording"
+| project
+    timestamp,
+    state = tostring(customDimensions["job.state"]),
+    source = tostring(customDimensions["hmcts.failure.source"]),
+    stuck_for_min = round(todouble(customDimensions["hmcts.duration_ms"]) / 60000.0, 0),
+    job_id = tostring(customDimensions["hmcts.journey.id"]),
+    speech_job_id = tostring(customDimensions["hmcts.dependency.ref"])
+| order by timestamp desc

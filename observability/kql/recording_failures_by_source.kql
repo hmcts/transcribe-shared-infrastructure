@@ -1,0 +1,22 @@
+// Failed jobs by failure source, daily (DIAAT-281, DIAAT-282). Recording.
+//
+// Measure: recording batch jobs that ended without a transcript, by where the failure
+//   came from.
+// Formula: sum(value) of transcription.jobs.finished with hmcts.outcome != "success", per
+//   day, by hmcts.failure.source and hmcts.outcome.
+// Source: counter transcription.jobs.finished (one per job at its terminal state),
+//   emitted only by the recording batch poller (transcribe-api-worker), so no area
+//   filter: metric dimensions do not carry hmcts.area (decision 1).
+//   hmcts.failure.source: application (our code, database, blob storage), dependency
+//   (Azure Speech) or queue (never processed). Never sampled (OD2).
+// Caveats: outcome "failure" = the caller's request was rejected (client error); it is
+//   excluded from journey availability but shown here. Jobs that never finish are not
+//   here: see stuck jobs.
+customMetrics
+| where name == "transcription.jobs.finished"
+| extend
+    outcome = tostring(customDimensions["hmcts.outcome"]),
+    source = tostring(customDimensions["hmcts.failure.source"])
+| where outcome != "success"
+| summarize jobs = sum(value) by day = bin(timestamp, 1d), series = strcat(source, " (", outcome, ")")
+| order by day asc

@@ -1,0 +1,18 @@
+// ALERT (DIAAT-285): Azure Speech connection failures in recording (the Phase 2 form of
+// "Speech connection failures": batch calls, not streaming sessions).
+//
+// Measure: failed Azure Speech calls in the window that never got a usable answer:
+//   speech.connect_error, speech.transport_error or an HTTP 5xx (speech.http_5xx), by
+//   code. 4xx other than 429 are excluded (our request), as are timeouts and throttling
+//   (alert_recording_speech_timeouts_throttling.kql).
+// Source: counter transcription.speech.call.failures (DIAAT-282), emitted only by the
+//   recording batch client, so no area filter: metric dimensions do not carry
+//   hmcts.area (decision 1).
+// Fires when failures > alert_thresholds.speech_connection_failures.
+// Output (AC3): the code and a count.
+customMetrics
+| where name == "transcription.speech.call.failures"
+| extend error_code = tostring(customDimensions["hmcts.error.code"])
+| where error_code in ("speech.connect_error", "speech.transport_error") or error_code startswith "speech.http_5"
+| summarize failures = sum(value) by error_code
+| project error_code, failures

@@ -1,0 +1,26 @@
+// AI usage: failed LLM calls by error type (OBS-5).
+//
+// Run against the environment's Application Insights resource (customMetrics). No
+// parameters: the time range comes from the caller. Covers both areas; metrics carry no
+// hmcts.area, so the feature and mode tell them apart.
+//
+// Source: the hmcts.ai.requests counter (hmcts-otel) with hmcts.outcome "error", from
+// both areas (dictation minutes and documents, recording post-processing, by feature):
+// error.type is the exception class litellm raised (e.g. InternalServerError,
+// RateLimitError, Timeout, BadRequestError), never its message.
+// Formula: calls = sum(valueSum) by error type, provider, model and feature; share_pct =
+// share of all failed calls.
+// Caveats: a content-filter block on Gemini is an error here (and then a fallback). litellm
+// logs only the first failure of its own (SDK) fallback chain. Assumes delta temporality.
+customMetrics
+| where name == "hmcts.ai.requests"
+| where tostring(customDimensions["hmcts.outcome"]) == "error"
+| extend error_type = tostring(customDimensions["error.type"]),
+    provider = tostring(customDimensions["gen_ai.provider.name"]),
+    model = tostring(customDimensions["gen_ai.request.model"]),
+    feature = tostring(customDimensions["hmcts.ai.feature"])
+| summarize calls = sum(valueSum) by error_type, provider, model, feature
+| extend share_pct = round(100.0 * calls / toscalar(customMetrics
+    | where name == "hmcts.ai.requests" and tostring(customDimensions["hmcts.outcome"]) == "error"
+    | summarize sum(valueSum)), 1)
+| order by calls desc

@@ -1,0 +1,17 @@
+// Retried calls by operation and code (DIAAT-281, DIAAT-282). Recording pipeline
+// (Phase 2): Speech.
+//
+// Measure: how often calls for a recording batch job had to be retried, and why.
+// Formula: sum(value) of transcription.job.retries by job.retry.operation and
+//   hmcts.error.code.
+// Source: counter transcription.job.retries, emitted only by the recording pipeline,
+//   so no area filter: metric dimensions do not carry hmcts.area (decision 1).
+//   Operations: speech.submit, speech.status, speech.results, speech.delete,
+//   webhook.deliver. Never sampled (OD2).
+// Caveats: a retry that then succeeds is still counted. Per-job detail: job.retried.
+customMetrics
+| where name == "transcription.job.retries"
+| summarize retries = sum(value)
+    by operation = tostring(customDimensions["job.retry.operation"]),
+       error_code = tostring(customDimensions["hmcts.error.code"])
+| order by retries desc

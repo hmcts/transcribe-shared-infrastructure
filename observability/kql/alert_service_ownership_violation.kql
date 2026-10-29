@@ -1,0 +1,25 @@
+// ALERT (DIAAT-285, critical, Security): someone reached, or tried to reach, a record
+// they do not own, in either area.
+//
+// Measure: count of security.ownership_violation events in the window, except the
+//   controlled-test outcome, by area, outcome, resource type and action.
+//   blocked  = refused by the authorisation check (the caller got the usual 404/422);
+//   detected = authorisation let it through and the post-authorisation assertion
+//              caught it: an authorisation defect. Treat as an incident.
+//   security.resource_type: dictation transcription, minute_version,
+//   transcription_job, document, audio, draft; recording job, transcript, audio, upload.
+//   Area: hmcts.area of the route (transcribe-api runtime/security_events.py).
+// Fires when violations > 0.
+// Output (AC3): enums and a count. Who and which record are NOT in the alert:
+//   investigators find the request IDs with the query in ALERTS.md (hmcts.request.id),
+//   then the audit_log rows (actor and record IDs) with the same request ID.
+customEvents
+| where name == "security.ownership_violation"
+| extend
+    area = tostring(customDimensions["hmcts.area"]),
+    outcome = tostring(customDimensions["security.outcome"]),
+    resource_type = tostring(customDimensions["security.resource_type"]),
+    action = tostring(customDimensions["security.action"])
+| where outcome != "test"
+| summarize violations = sum(itemCount) by area, outcome, resource_type, action
+| project area, outcome, resource_type, action, violations

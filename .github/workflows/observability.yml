@@ -1,0 +1,38 @@
+name: Observability queries
+
+# DIAAT-205: the KQL behind the workbooks and alerts must use only names transcribe-api
+# emits, filter each area's queries on its area, and keep content out of alerts. The
+# Terraform itself is validated and planned by the CNP Jenkins pipeline.
+on:
+  pull_request:
+    paths:
+      - "observability/**"
+      - ".github/workflows/observability.yml"
+  push:
+    branches: [master]
+    paths:
+      - "observability/**"
+      - ".github/workflows/observability.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  kql:
+    name: KQL names, areas and alert outputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Every name a query uses is in telemetry-names.txt; area queries filter on their
+      # area; alert queries output only safe columns (DIAAT-284, DIAAT-285, DIAAT-205).
+      - name: Check the queries
+        run: python3 observability/tests/check_kql_names.py
+
+      # The check's own tests, and the scan patterns pinned to transcribe-api's.
+      - name: Test the checks
+        run: python3 -m unittest discover -s observability/tests

@@ -1,0 +1,28 @@
+// Dictation timings from the unsampled metric (DIAAT-284; events from OBS-4), hourly.
+//
+// Run against the environment's Application Insights resource (customMetrics; one per
+// environment, no environment split). No parameters: the time range comes from the caller.
+//
+// Source: the hmcts.event.duration histogram (seconds), recorded by hmcts-otel for every
+// event that carries a duration, with the dimension "event" (the event name). The events
+// are browser events of the "dictation.session" journey (transcribe-web
+// lib/dictation-session.ts, relayed by transcribe-api's POST /api/telemetry):
+//   "speech.token_fetched"          - Speech token request time (browser);
+//   "speech.session_started"        - recording requested -> Speech session ready;
+//   "speech.first_result"           - recording requested -> first text;
+//   "dictation.resume_first_result" - resume -> first text after it.
+// Area: metrics carry no hmcts.area (decision 1) and this histogram has no journey
+// dimension, so there is no area filter; the four event names are dictation-only.
+// Formula: avg_ms = 1000 * sum(valueSum) / sum(valueCount); max_ms = 1000 * max(valueMax);
+//   samples = sum(valueCount). All starts together (user and reconnect).
+// Caveat: metrics are never sampled (OD2), but the App Insights exporter sends no buckets,
+// so this gives averages and maxima only. p50/p95 come from dictation_latency.kql.
+customMetrics
+| where name == "hmcts.event.duration"
+| extend event = tostring(customDimensions["event"])
+| where event in ("speech.token_fetched", "speech.session_started", "speech.first_result", "dictation.resume_first_result")
+| summarize samples = sum(valueCount), sum_s = sum(valueSum), max_s = max(valueMax)
+    by timestamp = bin(timestamp, 1h), event
+| extend avg_ms = round(1000.0 * sum_s / samples, 1), max_ms = round(1000.0 * max_s, 1)
+| project timestamp, event, avg_ms, max_ms, samples
+| order by timestamp asc, event asc

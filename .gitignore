@@ -8,3 +8,6 @@ crash.log
 # Terraform working directories
 .terraform/
 .terraform.lock.hcl
+
+# Python
+__pycache__/

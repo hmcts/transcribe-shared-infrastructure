@@ -1,0 +1,28 @@
+// Document template versions in use (DIAAT-284; attribute from DIAAT-279), over the
+// time range.
+//
+// Run against the environment's Application Insights resource (customEvents; one per
+// environment, no environment split). No parameters: the time range comes from the caller.
+//
+// Source: "document_generation.completed" / "document_generation.failed" of the
+// "dictation.submission" journey (transcribe-api src/transcribe_api/api/routes_dictation.py),
+// with document.template ("decision") and document.template_version (first 12 hex
+// characters of the template's SHA-256, or "unknown"). A new version appears after a
+// template change is deployed.
+// Area: dictation only (DIAAT-205, decision 1): hmcts.area, or the journey type's prefix.
+// Formula, per template and version: runs, failed (outcome other than success), first and
+// last seen. Two versions overlapping in time means instances on different releases.
+// Caveat: a run that failed before the template was loaded has version "unknown".
+customEvents
+| where name in ("document_generation.completed", "document_generation.failed")
+| where tostring(customDimensions["hmcts.journey.type"]) == "dictation.submission"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend template = tostring(customDimensions["document.template"]),
+    template_version = tostring(customDimensions["document.template_version"]),
+    outcome = tostring(customDimensions["hmcts.outcome"])
+| summarize runs = sum(itemCount), failed = sumif(itemCount, outcome != "success"),
+    first_seen = min(timestamp), last_seen = max(timestamp)
+    by template, template_version
+| order by last_seen desc

@@ -1,0 +1,34 @@
+// AI usage per day against its trailing 7-day average (OBS-5), for spotting spikes.
+// Both areas: metrics carry no hmcts.area; the feature and Speech mode tell them apart.
+//
+// Run against the environment's Application Insights resource (customMetrics). No
+// parameters: the time range comes from the caller (use at least 8 days).
+//
+// Measures: "llm_tokens" (gen_ai.client.token.usage, all models and features) and
+// "audio_hours" (hmcts.speech.audio.duration plus the browser-reported dictation time, as
+// in ai_audio_hours_daily.kql).
+// Formula, per day: usage; trailing_7d_avg = average of the 7 days before it (days with no
+// usage count as 0); ratio = usage / trailing_7d_avg.
+// Caveats: the AI usage spike alerts (alert_service_ai_usage_spike.kql and
+// alert_service_ai_token_spike.kql) cannot use this baseline (an alert query reads at
+// most 2 days, see ALERTS.md): it compares with the previous 24 hours. Weekends lower the
+// average.
+let llm = customMetrics
+    | where name == "gen_ai.client.token.usage"
+    | project timestamp, usage_measure = "llm_tokens", value = valueSum;
+let metered_audio = customMetrics
+    | where name == "hmcts.speech.audio.duration"
+    | project timestamp, usage_measure = "audio_hours", value = valueSum / 3600.0;
+let dictation_audio = customMetrics
+    | where name == "hmcts.event.duration"
+    | where tostring(customDimensions["event"]) == "speech.session_stopped"
+        and tostring(customDimensions["source"]) == "browser"
+    | project timestamp, usage_measure = "audio_hours", value = valueSum / 3600.0;
+union llm, metered_audio, dictation_audio
+| make-series usage = sum(value) default = 0 on timestamp step 1d by usage_measure
+| extend trailing = series_fir(usage, dynamic([0, 1, 1, 1, 1, 1, 1, 1]), true, false)
+| mv-expand timestamp to typeof(datetime), usage to typeof(real), trailing to typeof(real)
+| extend trailing_7d_avg = round(trailing, 2), usage = round(usage, 2)
+| extend ratio = iff(trailing_7d_avg > 0, round(usage / trailing_7d_avg, 2), real(null))
+| project timestamp, usage_measure, usage, trailing_7d_avg, ratio
+| order by usage_measure asc, timestamp asc

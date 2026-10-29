@@ -1,0 +1,29 @@
+// Dictation sessions by outcome (DIAAT-284; event from OBS-4: DIAAT-278 / DIAAT-300), daily.
+//
+// Run against the environment's Application Insights resource (customEvents; one per
+// environment, no environment split). No parameters: the time range comes from the caller.
+//
+// Source: "dictation.session_ended", one per dictation session (transcribe-web
+// lib/dictation-session.ts, relayed by transcribe-api's POST /api/telemetry), with
+//   hmcts.outcome    success   - submitted with a transcript;
+//                    cancelled - "dictation.not_submitted": left without submitting, nothing
+//                                lost (the draft can be restored later);
+//                    failure   - "dictation.no_transcript": no transcript captured;
+//                    error     - "autosave.failed", "speech.unhealthy" or "submission.failed".
+//   hmcts.error.code as above; dictation.end_reason submitted | page_hidden | left_page.
+// Area: dictation only (DIAAT-205, decision 1). Relayed browser events carry no hmcts.area,
+// so the area comes from the journey type's prefix ("dictation.session" -> "dictation").
+// Formula: sessions = number of dictation.session_ended events per day, outcome and code.
+// Caveats: not sampled, but a browser that closes before its telemetry is sent (or is
+// never reopened to send a stored end) loses the event: a lower bound on volume. The
+// success rate itself is in service_availability_journey.kql (DIAAT-277).
+customEvents
+| where name == "dictation.session_ended"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| extend outcome = tostring(customDimensions["hmcts.outcome"]),
+    code = tostring(customDimensions["hmcts.error.code"]),
+    end_reason = tostring(customDimensions["dictation.end_reason"])
+| summarize sessions = sum(itemCount) by timestamp = bin(timestamp, 1d), outcome, code, end_reason
+| order by timestamp asc, outcome asc, code asc

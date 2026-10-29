@@ -1,0 +1,22 @@
+// Recorded audio hours, browser recordings (DIAAT-284; analytics event from OBS-3), daily.
+// PARTIAL: consent-gated.
+//
+// Run against the environment's Application Insights resource (customEvents). No
+// parameters: the time range comes from the caller.
+//
+// Source: "recording.completed" (transcribe-web lib/analytics.ts: a dictation-area mic or
+// screen recording, not the recording area; the event carries no area), sent only when
+// the user accepted
+// analytics cookies: recording.duration_seconds, recording.mode (mic | screen).
+// Recordings are uploaded and transcribed as uploaded-audio jobs.
+// Formula, per day and mode: recordings = events; audio_hours = sum(duration) / 3600.
+// Caveats: analytics events are consent-gated, so these counts cover only consenting
+// users: a partial sample, not a total, and not comparable over time if consent rates
+// change. Uploaded files (not recorded in the browser) have no duration at all.
+customEvents
+| where name == "recording.completed"
+| extend mode = tostring(customDimensions["recording.mode"]),
+    seconds = todouble(customDimensions["recording.duration_seconds"])
+| summarize recordings = sum(itemCount), audio_hours = round(sum(seconds) / 3600.0, 2)
+    by timestamp = bin(timestamp, 1d), mode
+| order by timestamp asc, mode asc

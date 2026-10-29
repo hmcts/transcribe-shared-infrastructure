@@ -1,0 +1,30 @@
+// Concurrent dictation sessions, estimated (DIAAT-284; events from OBS-4), per 5 minutes.
+//
+// Run against the environment's Application Insights resource (customEvents). No
+// parameters: the time range comes from the caller.
+//
+// There is no server-side session count and no heartbeat event (the 30 s heartbeat in
+// lib/dictation-session.ts is browser localStorage only, used to recover the end of a
+// killed page). Concurrency is therefore derived from each session's journey
+// (hmcts.journey.type "dictation.session", hmcts.journey.id):
+//   start = first event of the journey received (normally "dictation.session_requested");
+//   end   = start + hmcts.duration_ms of "dictation.session_ended" (the browser-measured
+//           session length; a stored end sent later by another page keeps its real
+//           length), or the journey's last event if no end arrived; capped at 12 hours.
+// Formula: active_sessions = sessions whose [start, end] overlaps the 5-minute slot.
+// Caveats: an estimate. Sessions that started before the time range are not counted;
+// a session whose end was lost is cut at its last event (silent recording sends few
+// events), so the count is a lower bound. Includes paused sessions (the page is open).
+customEvents
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
+| where area == "dictation"
+| where tostring(customDimensions["hmcts.journey.type"]) == "dictation.session"
+| extend journey_id = tostring(customDimensions["hmcts.journey.id"]),
+    ended_ms = iff(name == "dictation.session_ended", todouble(customDimensions["hmcts.duration_ms"]), real(null))
+| summarize start = min(timestamp), last_seen = max(timestamp), ended_ms = max(ended_ms) by journey_id
+| extend finish = iff(isnotnull(ended_ms), start + ended_ms * 1ms, last_seen)
+| extend finish = min_of(max_of(finish, start), start + 12h)
+| mv-expand slot = range(bin(start, 5m), finish, 5m) to typeof(datetime) limit 200
+| summarize active_sessions = count() by timestamp = slot
+| order by timestamp asc
