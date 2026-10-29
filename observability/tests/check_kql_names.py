@@ -218,9 +218,13 @@ def alert_problems(text: str) -> list[str]:
     for line in lines:
         words = set(IDENTIFIER.findall(STRING_LITERAL.sub("", DIMENSION_KEY.sub("", line))))
         problems.extend(f"alert mentions content column {word!r}" for word in sorted(words & CONTENT_COLUMNS))
-        if words & FILTER_ONLY_COLUMNS and not re.match(r"^\|\s*where\b", line):
+        if words & FILTER_ONLY_COLUMNS and (
+            not re.match(r"^\|\s*where\b", line)
+            or "|" in STRING_LITERAL.sub("", line)[1:]
+        ):
             problems.extend(
-                f"alert uses {word!r} outside a '| where' filter" for word in sorted(words & FILTER_ONLY_COLUMNS)
+                f"alert uses {word!r} outside a '| where' filter (no additional operators on that line)"
+                for word in sorted(words & FILTER_ONLY_COLUMNS)
             )
     return problems
 
