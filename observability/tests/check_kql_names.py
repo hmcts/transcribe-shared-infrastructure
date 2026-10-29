@@ -232,6 +232,8 @@ def alert_problems(text: str) -> list[str]:
         problems.append("alert reads a customDimensions key in single quotes; use double quotes")
     if "column_ifexists" in code:
         problems.append("alert uses column_ifexists; name columns directly")
+    if re.search(r"\bpack_all\s*\(", STRING_LITERAL.sub("", code)):
+        problems.append("alert uses pack_all; read single safe columns")
     without_keys = DIMENSION_KEY.sub("", code)
     if BARE_DIMENSIONS.search(without_keys):
         problems.append("alert uses customDimensions as a whole; read single safe keys")
