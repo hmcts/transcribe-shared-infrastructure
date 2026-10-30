@@ -121,6 +121,20 @@ locals {
       frequency   = "PT6H"
       owner       = "service"
     }
+    "ui-errors" = {
+      query       = "alert_service_ui_errors"
+      params      = {}
+      severity    = 3
+      description = "Client-side errors in transcribe-web: more than ${local.t.ui_errors} of one error type and source in 1 hour (ui.error)."
+      measure     = "failures"
+      aggregation = "Total"
+      operator    = "GreaterThan"
+      threshold   = local.t.ui_errors
+      dimensions  = ["error_type", "source"]
+      window      = "PT1H"
+      frequency   = "PT15M"
+      owner       = "service"
+    }
 
     # --- Dictation -----------------------------------------------------------------
     "dictation-session-failures" = {
@@ -248,6 +262,20 @@ locals {
       dimensions  = []
       window      = "PT6H"
       frequency   = "PT30M"
+      owner       = "service"
+    }
+    "upload-transfer-failures" = {
+      query       = "alert_dictation_upload_transfer_failures"
+      params      = {}
+      severity    = 2
+      description = "Dictation audio files not reaching storage from the browser: ${local.t.upload_transfer_failures} or more files failed after their retries over 1 hour (upload.transfer_failed)."
+      measure     = "failures"
+      aggregation = "Total"
+      operator    = "GreaterThanOrEqual"
+      threshold   = local.t.upload_transfer_failures
+      dimensions  = []
+      window      = "PT1H"
+      frequency   = "PT15M"
       owner       = "service"
     }
 

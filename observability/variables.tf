@@ -124,6 +124,7 @@ variable "alert_thresholds" {
     ai_usage_spike_ratio               = optional(number, 3)      # last 24 h over the 24 h before, audio hours or tokens
     ai_usage_min_baseline_hours        = optional(number, 2)      # floor of the audio-hours baseline (recording had 1)
     ai_usage_min_baseline_tokens       = optional(number, 200000) # floor of the token baseline
+    ui_errors                          = optional(number, 20)     # client-side errors of one type and source, over 1 h (new: provisional)
     dictation_session_failures         = optional(number, 5)      # sessions ended in error, over 30 min
     speech_failures                    = optional(number, 3)      # live dictation Speech failures per error code, over 30 min
     speech_unhealthy                   = optional(number, 3)      # sessions whose Speech connection went unhealthy, over 30 min
@@ -134,6 +135,7 @@ variable "alert_thresholds" {
     document_failures                  = optional(number, 2)      # failed document generation runs, over 30 min
     upload_job_failures                = optional(number, 3)      # dictation uploaded-audio jobs ended in error, over 1 h
     upload_job_stuck_minutes           = optional(number, 120)    # oldest unfinished dictation uploaded-audio job
+    upload_transfer_failures           = optional(number, 3)      # dictation files the browser could not send to storage, over 1 h (new: provisional)
     poller_stalled_seconds             = optional(number, 600)    # since the recording poller's last successful poll
     stuck_jobs                         = optional(number, 0)      # more than this many recording jobs stuck
     oldest_waiting_minutes             = optional(number, 20)     # oldest recording job not yet started by Speech
