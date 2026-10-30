@@ -1,17 +1,19 @@
-name: Observability queries
+name: Observability
 
 # DIAAT-205: the KQL behind the workbooks and alerts must use only names transcribe-api
 # emits, filter each area's queries on its area, and keep content out of alerts. The
-# Terraform itself is validated and planned by the CNP Jenkins pipeline.
+# module's Terraform tests run here too; the root is planned by the CNP Jenkins pipeline.
 on:
   pull_request:
     paths:
       - "observability/**"
+      - "*.tf"
       - ".github/workflows/observability.yml"
   push:
     branches: [master]
     paths:
       - "observability/**"
+      - "*.tf"
       - ".github/workflows/observability.yml"
 
 permissions:
@@ -36,3 +38,24 @@ jobs:
       # The check's own tests, and the scan patterns pinned to transcribe-api's.
       - name: Test the checks
         run: python3 -m unittest discover -s observability/tests
+
+  terraform:
+    name: Terraform module tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.4"
+
+      # The module and the root that instantiates it.
+      - name: Format
+        run: terraform fmt -check -recursive
+
+      # Workbooks, alert rules and availability tests, planned against a mock provider
+      # (tests/observability.tftest.hcl): no Azure access.
+      - name: Test
+        run: |
+          terraform -chdir=observability init -backend=false -input=false
+          terraform -chdir=observability test

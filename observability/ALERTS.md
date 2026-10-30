@@ -5,9 +5,9 @@ to each alert. The queries are the `kql/alert_*.kql` files in this module. Each 
 `//` comment that gives the measure, the source and the caveats. The file is authoritative: if this
 page and a file disagree, the file is right and this page needs fixing.
 
-> **Status: not deployed.** This module holds the queries only. The Terraform for the rules,
-> action groups, workbooks and availability tests is a later PR. It waits for PlatOps to allow
-> those resource types on CNP. Every alert will ship with `alerts_enabled = false`.
+> **Status: off.** The rules and action groups are defined in `alerts.tf` and created only when
+> `alerts_enabled` is true (the root's `observability_alerts_enabled`, default false). They
+> cannot be switched on until PlatOps decide the route and allow the resource types.
 >
 > Open with PlatOps:
 > - **Routing.** Whether alerts go to Dynatrace, to a Slack action group, or to our own action
@@ -16,7 +16,8 @@ page and a file disagree, the file is right and this page needs fixing.
 >   metric alerts, action groups, workbooks and standard web tests are allowed.
 > - **Owner teams.** The service team and Security are placeholders until PlatOps confirms them.
 > - **Severity scale.** The heritage dictation rules used 1 (critical) and 2 (warning). The
->   heritage recording rules used the Azure scale 0 to 4. One scale is to be agreed.
+>   heritage recording rules used the Azure scale 0 to 4. `alerts.tf` uses 1 critical, 2 warning,
+>   3 informational and 4 test; to be agreed.
 >
 > The thresholds are **provisional**. They come from technical refinement, before any baseline
 > data. Revise them once a few weeks of data exist (see [Revising thresholds](#revising-thresholds)).
@@ -40,7 +41,7 @@ page and a file disagree, the file is right and this page needs fixing.
   environment: aat, perftest, ithc, demo, prod). No query splits by environment.
 - The rule's window is the query's time range. The queries have no time filter of their own,
   except the two AI spike queries, which read 2 days.
-- Some queries need a parameter. The Terraform will prepend it as a `let` line, for example
+- Some queries need a parameter. `alerts.tf` prepends it as a `let` line, for example
   `let min_requests = 20;`. To run such a query by hand in Logs, prepend the same line. The
   parameter and its Logs example are in the file's comment.
 - The rule's measure and dimensions must be columns of the file's final `| project`. The column
@@ -62,6 +63,7 @@ dimensions.
 | `kql/alert_service_ownership_violation_test.kql` | `outcome, resource_type, violations` |
 | `kql/alert_service_ai_usage_spike.kql` | `feature, audio_hours, baseline_hours, spike_ratio` |
 | `kql/alert_service_ai_token_spike.kql` | `feature, tokens, baseline_tokens, spike_ratio` |
+| `kql/alert_service_ui_errors.kql` | `error_type, source, failures` |
 | `kql/alert_dictation_session_failures.kql` | `error_code, failures` |
 | `kql/alert_dictation_speech_failures.kql` | `error_code, failures` |
 | `kql/alert_dictation_speech_unhealthy.kql` | `failures, failed_pct` |
@@ -71,6 +73,7 @@ dimensions.
 | `kql/alert_dictation_document_generation_failures.kql` | `source, error_code, failures` |
 | `kql/alert_dictation_upload_job_failures.kql` | `error_code, failures` |
 | `kql/alert_dictation_upload_jobs_stuck.kql` | `stuck, oldest_waiting_min` |
+| `kql/alert_dictation_upload_transfer_failures.kql` | `error_code, failures` |
 | `kql/alert_recording_poller_stalled.kql` | `last_success_age_s` |
 | `kql/alert_recording_stuck_jobs.kql` | `state, stuck` |
 | `kql/alert_recording_oldest_waiting.kql` | `oldest_waiting_min` |
@@ -139,6 +142,7 @@ ISO 8601 durations as the Terraform takes them.
 | [ownership-violation-test](#ownership-violation-test) | `kql/alert_service_ownership_violation_test.kql` | `violations` (Total, GreaterThan, 0) | PT5M / PT5M | 4, named `[TEST]` | `outcome` | Security |
 | [ai-usage-spike](#ai-usage-spike) | `kql/alert_service_ai_usage_spike.kql` | `spike_ratio` (Maximum, GreaterThan, 3). `min_baseline_hours`: recording 1; dictation had another rule (both days at least 2 hours), to be agreed | P2D / dictation PT6H, recording PT1H, to be agreed | dictation 2, recording 3 | `feature` | service team |
 | [ai-token-spike](#ai-token-spike) | `kql/alert_service_ai_token_spike.kql` | `spike_ratio` (Maximum, GreaterThan, 3). `min_baseline_tokens`: to be agreed (dictation had both days at least 200,000 tokens; the file's Logs example is 10000) | P2D / PT6H | 2 | `feature` | service team |
+| [ui-errors](#ui-errors) | `kql/alert_service_ui_errors.kql` | `failures` (Total, GreaterThan, 20), provisional | PT1H / PT15M, provisional | 3, provisional | `error_type`, `source` | service team |
 | [dictation-session-failures](#dictation-session-failures) | `kql/alert_dictation_session_failures.kql` | `failures` (Total, GreaterThanOrEqual, 5) | PT30M / PT10M | 2 | none (heritage) | service team |
 | [speech-failures](#speech-failures) | `kql/alert_dictation_speech_failures.kql` | `failures` (Total, GreaterThanOrEqual, 3) | PT30M / PT10M | 2 | `error_code` | service team |
 | [speech-unhealthy](#speech-unhealthy) | `kql/alert_dictation_speech_unhealthy.kql` | `failures` (Total, GreaterThanOrEqual, 3), provisional | PT30M / PT10M, provisional | 2, provisional | none | service team |
@@ -148,6 +152,7 @@ ISO 8601 durations as the Terraform takes them.
 | [document-generation-failures](#document-generation-failures) | `kql/alert_dictation_document_generation_failures.kql` | `failures` (Total, GreaterThanOrEqual, 2) | PT30M / PT10M | 2 | none (heritage) | service team |
 | [upload-job-failures](#upload-job-failures) | `kql/alert_dictation_upload_job_failures.kql` | `failures` (Total, GreaterThanOrEqual, 3) | PT1H / PT15M | 2 | none (heritage) | service team |
 | [upload-jobs-stuck](#upload-jobs-stuck) | `kql/alert_dictation_upload_jobs_stuck.kql` | `oldest_waiting_min` (Maximum, GreaterThan, 120) | PT6H / PT30M | 2 | none | service team |
+| [upload-transfer-failures](#upload-transfer-failures) | `kql/alert_dictation_upload_transfer_failures.kql` | `failures` (Total, GreaterThanOrEqual, 3), provisional | PT1H / PT15M, provisional | 2, provisional | none | service team |
 | [poller-stalled](#poller-stalled) | `kql/alert_recording_poller_stalled.kql` | `last_success_age_s` (Minimum, GreaterThan, 600) | PT10M / PT5M | 1 | none | service team |
 | [stuck-jobs](#stuck-jobs) | `kql/alert_recording_stuck_jobs.kql` | `stuck` (Maximum, GreaterThan, 0) | PT15M / PT5M | 2 | `state` | service team |
 | [oldest-waiting](#oldest-waiting) | `kql/alert_recording_oldest_waiting.kql` | `oldest_waiting_min` (Maximum, GreaterThan, 20) | PT15M / PT5M | 2 | none | service team |
@@ -156,6 +161,7 @@ ISO 8601 durations as the Terraform takes them.
 | [speech-connection-failures](#speech-connection-failures) | `kql/alert_recording_speech_connection_failures.kql` | `failures` (Total, GreaterThan, 5) | PT30M / PT10M | 2 | `error_code` | service team |
 | [storage-failed](#storage-failed) | `kql/alert_recording_storage_failed.kql` | `failures` (Total, GreaterThan, 0) | PT15M / PT5M | 2 | `operation`, `error_code` | service team |
 | [upload-failures](#upload-failures) | `kql/alert_recording_upload_failures.kql` | `failures` (Total, GreaterThan, 10) | PT1H / PT15M | 3 | `outcome`, `error_code` | service team |
+| [availability-test](#availability-test) | none: a metric alert on each availability test | failed locations (GreaterThanOrEqual, 2 of 5) | PT5M / PT1M | dictation 1, recording 0 | the test | service team |
 
 Notes on the table:
 
@@ -173,6 +179,11 @@ Notes on the table:
   `/api/openapi.json`) and for transcribe-web's own requests.
 - The dictation heritage rules called availability "endpoint-availability" and the 5xx rule
   "server-error-rate". The names above follow the merged files.
+- **Terraform defaults.** Where a value is "to be agreed", `alert_thresholds` in `variables.tf`
+  defaults to the dictation value: availability 90% with `min_requests` 20, 5xx 2% over PT30M,
+  ownership violations over PT10M, `min_baseline_hours` 2, `min_baseline_tokens` 200,000, AI spikes
+  every PT6H, and Sev 1 for the critical alerts. Every rule resolves itself. Change a value by
+  setting `alert_thresholds` once it is agreed.
 
 ## Common first checks on AKS
 
@@ -181,8 +192,8 @@ App Service, no Easy Auth and no Sentry on CNP.
 
 1. **Run the alert's query in Logs.** Open the environment's Application Insights resource, then
    Logs. Paste the `.kql` file (prepend its `let` parameter if it has one) and set the time range
-   to the alert window. Then run the related panel queries named in the runbook. The workbooks
-   that will show these panels are part of the later Terraform PR; until then, run the files.
+   to the alert window. Then run the related panel queries named in the runbook; most are also
+   panels of the environment's workbooks (`workbooks.tf`).
 2. **Pods.** `kubectl -n transcribe get pods`. Look for restarts, `CrashLoopBackOff`, `Pending`,
    `ImagePullBackOff` or `OOMKilled` (`kubectl -n transcribe describe pod <pod>`).
    `kubectl -n transcribe get deploy` lists the API and worker deployments.
@@ -421,6 +432,47 @@ input and output. Usage, never cost.
 Grok or GPT-4o after Gemini fails), very long uploads, or genuine growth. Fix a loop and tell
 PlatOps about the cost; a provider problem goes to PlatOps or the provider.
 
+### ui-errors
+
+**Means.** transcribe-web's pages reported more than 20 client-side errors of one type
+(`error_type`, the error's class name) caught in one place (`source`) in an hour:
+- `render`: a page failed to render and showed the error page;
+- `window_error`: an uncaught error in the page's scripts;
+- `unhandled_rejection`: a promise that failed with nobody handling it.
+
+This replaces the heritage browser Sentry. Each page sends one event per type, source and route a
+minute, at most 20, so the count is of pages and minutes, not raw throws. It is a lower bound.
+
+**First checks.**
+1. In Logs: `customEvents | where name == "ui.error" | summarize count() by
+   tostring(customDimensions["ui.error_type"]), tostring(customDimensions["page.route"])`. Which
+   pages are affected?
+2. For `render`, `next.error.digest` links the error page to the server error that caused it.
+   Look in transcribe-web's `traces` and `exceptions` for the same digest.
+3. Did a release of transcribe-web start at the same time?
+
+**Likely causes and fixes.**
+- `ChunkLoadError` for a few minutes after a release: pages opened before the release ask for
+  scripts that no longer exist. Expected; it stops as users reload.
+- A defect in a new release (roll back in cnp-flux-config, then raise a defect).
+- An API change the page does not handle: see [server-errors](#server-errors).
+
+### availability-test
+
+A metric alert per standard availability test (`availability-tests.tf`), not a query: Sev 1 when a
+test fails from `availability_test_failed_locations` (2) or more of its 5 locations in 5 minutes.
+The heritage dictation rule used Sev 1 over 5 minutes, the recording rule Sev 0 over 15 minutes;
+to be agreed. No test exists yet: which CNP URLs Azure's public test agents can reach is a PlatOps
+question (`observability_availability_test_urls`, empty).
+
+**Means.** The service cannot be reached from outside, or answers its health URL with something
+other than 200 (a redirect to sign-in is a failure).
+
+**First checks.** `kql/service_availability_synthetic.kql`, then
+[service-unavailable](#service-unavailable) and the [common first checks](#common-first-checks-on-aks).
+If only the test fails and real requests succeed, suspect the ingress, DNS or the certificate
+(the test fails 7 days before it expires).
+
 ## Dictation alerts
 
 Most dictation measures come from browser events relayed by `POST /api/telemetry`. They have no
@@ -569,6 +621,26 @@ no queue metric for dictation uploads.
 is missing (not on the active cron cluster, or the HelmRelease failed), fix the release with
 PlatOps.
 
+### upload-transfer-failures
+
+**Means.** Three or more dictation audio files could not be sent from the browser to storage in
+an hour, after their retries. The user saw the upload fail; no job was created, so
+[upload-job-failures](#upload-job-failures) does not see these. Codes:
+- `upload.network`, `upload.timeout`: the user's network, or the route to storage;
+- `upload.url_unavailable`: the API could not give an upload URL;
+- `http.<status>`: storage refused the upload (for example `http.403`: an expired or invalid
+  upload URL).
+
+**First checks.**
+1. Run the query by `error_code`. One user on a bad network, or many?
+2. `upload.url_unavailable`: `kql/service_server_error_rate.kql` for the upload URL request, and
+   the API logs.
+3. `http.403` or other storage codes: the storage account's firewall, CORS rules and the clock
+   of the signing identity. `kql/service_dependency_up.kql` for `storage`.
+
+**Likely causes and fixes.** A storage network or CORS change (PlatOps), an API defect in issuing
+upload URLs (roll back), or users' networks (no action beyond checking it is not widespread).
+
 ## Recording alerts
 
 The recording metrics (`transcription.*`) come from transcribe-api-worker and carry no area: they
@@ -699,13 +771,10 @@ in use, which is a product question, not an outage.
 
 ## Not covered by a query alert
 
-- **Synthetic availability (web tests).** Both heritage modules had a metric alert on standard web
-  tests (fails from 2 of 5 locations; dictation Sev 1 over 5 minutes, recording Sev 0 over 15
-  minutes). It is a metric alert, not a query, and comes with the web tests in the later Terraform
-  PR. Its panel is `kql/service_availability_synthetic.kql`. Which URLs to test on CNP, the window
-  and the severity are to be agreed.
+- **Synthetic availability.** A metric alert, not a query: see
+  [availability-test](#availability-test).
 - **The API sends no telemetry at all.** If transcribe-api is fully down, the request-based alerts
-  see nothing. Only the web tests (above) or a platform probe can show it. Whether Dynatrace probes
+  see nothing. Only the availability tests or a platform probe can show it. Whether Dynatrace probes
   the service is a PlatOps question.
 - **Jobs waiting for the dictation upload poller.** No queue metric for dictation uploads.
 - **Azure Speech timeouts and throttling for dictation uploads** are not split by type: they show
@@ -721,10 +790,10 @@ Run these once in each environment after the alerts are first enabled, again aft
 routing or receivers. For each, record the alert, the time it fired, who received it and when, in
 DIAAT-287 (see `VALIDATION.md`). The alert must arrive at its route, and nowhere else.
 
-The heritage recording module used `alert_threshold_overrides` (a temporary per-alert threshold
-that a healthy system meets) to make each critical rule fire through its real action group,
-without breaking anything. Whether the merged Terraform keeps that variable is to be agreed in the
-Terraform PR. With it:
+`alert_threshold_overrides` (alert name => threshold) sets a temporary threshold that a healthy
+system meets, so each critical rule fires through its real action group without breaking
+anything. A key that is not an alert (or `availability-test`) fails the plan. Remove each override
+after its test.
 
 | Critical alert | Controlled test | Expected |
 |---|---|---|

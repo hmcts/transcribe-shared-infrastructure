@@ -14,10 +14,10 @@ evidence. Epic: DIAAT-205. The measures are in [MEASURES.md](MEASURES.md) and th
 The procedure has five parts: the automated scan on every build, preparation, the scenarios in AAT
 for each area, the deployed sample scan, then evidence and sign-off.
 
-> **What is not deployed yet.** The workbooks, alert rules and availability tests are a later
-> Terraform PR (PlatOps must first allow those resource types). Until then, check each panel by
-> running its query file in Logs, and check each alert by running its `kql/alert_*.kql` file over
-> the scenario's window. Alert delivery is tested once the rules exist, with the controlled tests
+> **What is not deployed yet.** The workbooks, alert rules and availability tests are defined in
+> this module, but PlatOps must first allow those resource types, and alerts are off. Until then,
+> check each panel by running its query file in Logs, and check each alert by running its
+> `kql/alert_*.kql` file over the scenario's window. Alert delivery is tested once the rules exist, with the controlled tests
 > in [ALERTS.md](ALERTS.md#controlled-tests-ac2).
 
 ## 1. The automated scan

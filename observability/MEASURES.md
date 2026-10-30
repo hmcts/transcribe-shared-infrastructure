@@ -19,8 +19,9 @@ validation procedure is in [VALIDATION.md](VALIDATION.md).
   an environment, query its resource. No query splits by environment.
 - **The time range comes from the caller** (a workbook, an alert window, or Logs). The files take
   no parameters, except the cost queries' placeholders.
-- **Workbooks are not deployed yet.** They are part of the later Terraform PR. Until then, run the
-  files in the environment's Application Insights resource, Logs.
+- **Workbooks** (`workbooks.tf`): service health, dictation, recording, workload and AI usage, one
+  set per environment. Each panel is one of these files, sometimes with a `project` for its chart.
+  Until they are created (PlatOps must allow the resource type), run the files in Logs.
 - **Services** (`cloud_RoleName`): `transcribe-api` (the API pods), `transcribe-api-worker` (the
   pollers and the jobs they run), `transcribe-web` (the Next.js server). Browser events reach App
   Insights through `transcribe-api`'s `POST /api/telemetry`.
@@ -55,7 +56,7 @@ Cross-area. Targets: 99% or 99.5% over a calendar month, **still to be confirmed
 |---|---|---|---|---|
 | Endpoint availability % | `kql/service_availability_endpoint.kql` | Per day, service and area: 100 × (requests − unavailable) / requests. Unavailable = 5xx, or failed with no status (0 or missing) | `requests` | 4xx count as available. Health and version probes and synthetic traffic excluded. Area empty for shared paths and transcribe-web. A day with no requests has no row |
 | Journey availability % | `kql/service_availability_journey.kql` | Per day and journey: 100 × succeeded / counted. `dictation.session`: success or cancelled out of all four outcomes. `dictation.submission`, `dictation.transcription`, `recording.job`: success out of success + error | `dictation.session_ended`; `submission.*`; `job.finished` split by area | `failure` (client rejection) and `cancelled` are excluded and shown as `excluded`. Lost browser events lower the volume, not the rate. Jobs that never finish have no `job.finished` |
-| Synthetic availability % | `kql/service_availability_synthetic.kql` | Per test and day: 100 × successful runs / runs | `availabilityResults` (standard web tests) | Every location's run counts once. A redirect to sign-in is a failure. No web tests exist yet (later PR) |
+| Synthetic availability % | `kql/service_availability_synthetic.kql` | Per test and day: 100 × successful runs / runs | `availabilityResults` (standard web tests) | Every location's run counts once. A redirect to sign-in is a failure. No tests exist yet: which URLs the test agents can reach is a PlatOps question |
 | HTTP server error rate | `kql/service_server_error_rate.kql` | Per hour, service and area: server errors / requests | `requests` | Same definition and exclusions as endpoint availability |
 | Exceptions by type | `kql/service_exceptions_by_type.kql` | Exceptions per type, service and area, with last seen | `exceptions` | Type and stack only, never the message. Area empty for shared code |
 | Dependency health | `kql/service_dependency_up.kql` | `min(service.dependency.up)` per 15 minutes and dependency (`database`, `storage`, `speech`) | Gauge from the checker in transcribe-api, every `DEPENDENCY_HEALTH_INTERVAL_SECONDS`, Speech at most every 5 minutes | 0 means at least one API instance saw it down. No points: not checked |

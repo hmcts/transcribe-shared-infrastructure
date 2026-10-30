@@ -127,3 +127,63 @@ variable "sa_account_replication_type" {
     error_message = "sa_account_replication_type must be one of LRS, ZRS, GRS, RAGRS, GZRS or RAGZRS."
   }
 }
+
+variable "observability_workbooks_enabled" {
+  description = "Create the DIAAT-205 workbooks (observability/workbooks.tf)."
+  type        = bool
+  default     = true
+}
+
+variable "observability_alerts_enabled" {
+  description = "Create the DIAAT-285 alert rules and action groups (observability/ALERTS.md). Off until PlatOps decide the route and allow the resource types. When true, set at least one receiver of each team."
+  type        = bool
+  default     = false
+}
+
+variable "observability_service_alert_emails" {
+  description = "Team mailboxes receiving the service alerts, once alerts are enabled."
+  type        = list(string)
+  default     = []
+}
+
+variable "observability_security_alert_emails" {
+  description = "Team mailboxes receiving the security alerts, once alerts are enabled."
+  type        = list(string)
+  default     = []
+}
+
+variable "observability_availability_test_urls" {
+  description = "Standard availability tests: name => URL answering 200 without sign-in, reachable from Azure's public test agents. Empty: none."
+  type        = map(string)
+  default     = {}
+}
+
+variable "observability_alert_thresholds" {
+  description = "Overrides of the provisional alert thresholds (observability/variables.tf alert_thresholds), once agreed. Empty: the defaults."
+  type        = any
+  default     = {}
+}
+
+variable "observability_alert_threshold_overrides" {
+  description = "Temporary thresholds for the controlled alert tests (observability/ALERTS.md): alert name => threshold. Remove after each test."
+  type        = map(number)
+  default     = {}
+}
+
+variable "observability_billing_export_configured" {
+  description = "The billing exports exist (PlatOps): the AI usage workbook allocates cost by usage share. Set observability_azure_billing_export_source with it."
+  type        = bool
+  default     = false
+}
+
+variable "observability_azure_billing_export_source" {
+  description = "KQL table expression of the Azure Cost Management export, for example workspace(\"<workspace resource ID>\").AzureCostExport_CL."
+  type        = string
+  default     = ""
+}
+
+variable "observability_gcp_billing_export_source" {
+  description = "Optional KQL table expression of the GCP billing export (Vertex AI). Empty: GCP cost is not allocated."
+  type        = string
+  default     = ""
+}
