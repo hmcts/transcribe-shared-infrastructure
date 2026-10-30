@@ -593,11 +593,11 @@ locals {
           },
         ],
         [
-          for section in view.sections : try(section.text, null) != null ? {
+          for section in view.sections : jsondecode(try(section.text, null) != null ? jsonencode({
             type    = 1
             name    = section.name
             content = { json = "### ${section.title}\n\n${section.text}" }
-            } : {
+            }) : jsonencode({
             type = 3
             name = section.name
             content = {
@@ -610,7 +610,7 @@ locals {
               timeContextFromParameter = "TimeRange"
               visualization            = section.visualization
             }
-          }
+          }))
         ],
       )
       fallbackResourceIds = [var.application_insights_id]
