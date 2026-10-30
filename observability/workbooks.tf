@@ -51,8 +51,8 @@ locals {
   cost_allocation_query = join("", [
     "let usage_share = () {\n${trimspace(local.kql.ai_usage_share_daily)}\n};\n",
     replace(replace(replace(local.kql.cost_allocation,
-      "AZURE_BILLING_EXPORT", var.azure_billing_export_source),
-      "GCP_BILLING_EXPORT", trimspace(var.gcp_billing_export_source) != "" ? var.gcp_billing_export_source : local.empty_gcp_billing),
+      "let azure_billing = AZURE_BILLING_EXPORT", "let azure_billing = ${var.azure_billing_export_source}"),
+      "let gcp_billing = GCP_BILLING_EXPORT", "let gcp_billing = ${trimspace(var.gcp_billing_export_source) != "" ? var.gcp_billing_export_source : local.empty_gcp_billing}"),
     "BILLING_RESOURCE_IDS", jsonencode([for id in var.billing_resource_ids : lower(id)])),
   ])
   cost_by_hearing_query = replace(replace(local.kql.recording_cost_by_hearing,
