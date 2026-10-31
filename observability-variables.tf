@@ -1,118 +1,90 @@
-variable "application_insights_id" {
-  description = "Resource ID of the environment's Application Insights resource. The workbooks, alert rules and availability tests read it."
-  type        = string
-}
+# Inputs of the DIAAT-205 observability resources (observability-*.tf). The KQL, docs and
+# checks are in observability/.
 
-variable "resource_group_name" {
-  description = "Resource group for the workbooks, alert rules, action groups and availability tests. Who can open a workbook is decided by RBAC on this group (MEASURES.md, \"Access\")."
-  type        = string
-}
-
-variable "location" {
-  description = "Azure region of the Application Insights resource."
-  type        = string
-}
-
-variable "product" {
-  description = "Product name, used in resource names and titles."
-  type        = string
-}
-
-variable "env" {
-  description = "Environment name (aat, perftest, ithc, demo, prod), shown in titles and used in resource names."
-  type        = string
-}
-
-variable "tags" {
-  description = "Tags for the created resources."
-  type        = map(string)
-  default     = {}
-}
-
-variable "workbooks_enabled" {
-  description = "Create the workbooks (workbooks.tf). Off only where the workbook resource type is not allowed."
+variable "observability_workbooks_enabled" {
+  description = "Create the workbooks (observability-workbooks.tf). Off only where the workbook resource type is not allowed."
   type        = bool
   default     = true
 }
 
-# --- Availability tests (DIAAT-277, availability-tests.tf) --------------------------------
+# --- Availability tests (DIAAT-277, observability-availability-tests.tf) --------------------------------
 
-variable "availability_test_urls" {
+variable "observability_availability_test_urls" {
   description = "Standard availability tests to create: name => URL answering 200 without sign-in. Only URLs that Azure's public test agents can reach (a PlatOps question on CNP). Empty: none."
   type        = map(string)
   default     = {}
 }
 
-variable "availability_test_locations" {
+variable "observability_availability_test_locations" {
   description = "Availability test agent locations (Azure geo location IDs). Default: UK South, UK West, North Europe, West Europe, France Central."
   type        = list(string)
   default     = ["emea-ru-msa-edge", "emea-se-sto-edge", "emea-gb-db3-azr", "emea-nl-ams-azr", "emea-fr-pra-edge"]
 }
 
-variable "availability_test_frequency" {
+variable "observability_availability_test_frequency" {
   description = "Seconds between availability test runs from each location (300, 600 or 900)."
   type        = number
   default     = 300
 
   validation {
-    condition     = contains([300, 600, 900], var.availability_test_frequency)
+    condition     = contains([300, 600, 900], var.observability_availability_test_frequency)
     error_message = "availability_test_frequency must be 300, 600 or 900."
   }
 }
 
-# --- Alerts (DIAAT-285, alerts.tf, ALERTS.md) ----------------------------------------------
+# --- Alerts (DIAAT-285, observability-alerts.tf, ALERTS.md) ----------------------------------------------
 
-variable "alerts_enabled" {
+variable "observability_alerts_enabled" {
   description = "Create the alert rules and action groups (DIAAT-285). Off until PlatOps decide the route and allow the resource types (ALERTS.md). While false, no alert rule or action group is created."
   type        = bool
   default     = false
 }
 
-variable "service_owner_team" {
+variable "observability_service_owner_team" {
   description = "Team that receives and owns the service alerts, named in each rule. Placeholder until PlatOps confirm it."
   type        = string
   default     = "Service team (to be confirmed by PlatOps)"
 }
 
-variable "security_owner_team" {
+variable "observability_security_owner_team" {
   description = "Team that receives and owns the security alerts. Placeholder until PlatOps confirm it."
   type        = string
   default     = "Security (to be confirmed by PlatOps)"
 }
 
-variable "service_alert_emails" {
-  description = "Email receivers of the service action group: team mailboxes, not individuals. This or a webhook is required when alerts_enabled."
+variable "observability_service_alert_emails" {
+  description = "Email receivers of the service action group: team mailboxes, not individuals. This or a webhook is required when observability_alerts_enabled."
   type        = list(string)
   default     = []
 }
 
-variable "security_alert_emails" {
-  description = "Email receivers of the Security action group: team mailboxes, not individuals. This or a webhook is required when alerts_enabled."
+variable "observability_security_alert_emails" {
+  description = "Email receivers of the Security action group: team mailboxes, not individuals. This or a webhook is required when observability_alerts_enabled."
   type        = list(string)
   default     = []
 }
 
-variable "service_alert_webhook_url" {
-  description = "Optional webhook receiver of the service action group (for example Dynatrace or the incident tool), common alert schema. Empty: none."
+variable "observability_service_alert_webhook_url" {
+  description = "Optional webhook receiver of the service action group (for example Dynatrace or the incident tool), common alert schema. Empty: none. Carries a token: set it from Key Vault, never in tfvars (this repository is public)."
   type        = string
   default     = ""
   sensitive   = true
 }
 
-variable "security_alert_webhook_url" {
-  description = "Optional webhook receiver of the Security action group, common alert schema. Empty: none."
+variable "observability_security_alert_webhook_url" {
+  description = "Optional webhook receiver of the Security action group, common alert schema. Empty: none. Carries a token: set it from Key Vault, never in tfvars (this repository is public)."
   type        = string
   default     = ""
   sensitive   = true
 }
 
-variable "alert_runbook_url" {
+variable "observability_alert_runbook_url" {
   description = "Where the response instructions live; each alert links to <url>#<alert name>."
   type        = string
   default     = "https://github.com/hmcts/transcribe-shared-infrastructure/blob/master/observability/ALERTS.md"
 }
 
-variable "alert_thresholds" {
+variable "observability_alert_thresholds" {
   description = "Alert thresholds. PROVISIONAL: set in technical refinement, before baseline data. Where the heritage areas differed, the default is the dictation value; ALERTS.md lists both, to be agreed."
   type = object({
     availability_test_failed_locations = optional(number, 2)      # of 5 test locations, over 5 min
@@ -150,61 +122,49 @@ variable "alert_thresholds" {
 
   # The window is PT<n>M, evaluated every 5 minutes: an allowed log alert window of 5 minutes or more.
   validation {
-    condition     = contains([5, 10, 15, 30, 45], var.alert_thresholds.dependency_down_minutes)
-    error_message = "alert_thresholds.dependency_down_minutes must be 5, 10, 15, 30 or 45."
+    condition     = contains([5, 10, 15, 30, 45], var.observability_alert_thresholds.dependency_down_minutes)
+    error_message = "observability_alert_thresholds.dependency_down_minutes must be 5, 10, 15, 30 or 45."
   }
 
   validation {
-    condition     = var.alert_thresholds.availability_test_failed_locations >= 1 && var.alert_thresholds.availability_test_failed_locations <= length(var.availability_test_locations)
-    error_message = "alert_thresholds.availability_test_failed_locations must be between 1 and the number of availability_test_locations."
+    condition     = var.observability_alert_thresholds.availability_test_failed_locations >= 1 && var.observability_alert_thresholds.availability_test_failed_locations <= length(var.observability_availability_test_locations)
+    error_message = "observability_alert_thresholds.availability_test_failed_locations must be between 1 and the number of observability_availability_test_locations."
   }
 }
 
-variable "alert_threshold_overrides" {
+variable "observability_alert_threshold_overrides" {
   description = "Temporary per-alert thresholds for the controlled tests (ALERTS.md, \"Controlled tests\"): alert name => threshold. Remove each one after its test."
   type        = map(number)
   default     = {}
 
   # An override for an alert that does not exist would silently do nothing.
   validation {
-    condition     = alltrue([for key in keys(var.alert_threshold_overrides) : contains(local.alert_names, key)])
-    error_message = "alert_threshold_overrides: every key must be an alert name in alerts.tf (or availability-test)."
+    condition     = alltrue([for key in keys(var.observability_alert_threshold_overrides) : contains(local.obs_alert_names, key)])
+    error_message = "observability_alert_threshold_overrides: every key must be an alert name in observability-alerts.tf (or availability-test)."
   }
 }
 
-# --- Cost allocation (OBS-5, workbooks.tf "ai-usage", MEASURES.md) -------------------------
+# --- Cost allocation (OBS-5, observability-workbooks.tf "ai-usage", MEASURES.md) -------------------------
 
-variable "billing_export_configured" {
-  description = "The billing exports the AI usage workbook allocates cost from exist (PlatOps). While false, the cost panels say \"requires the billing export\" and no billing table is queried. When true, set azure_billing_export_source, billing_resource_ids and speech_resource_id."
+variable "observability_billing_export_configured" {
+  description = "The billing exports the AI usage workbook allocates cost from exist (PlatOps). While false, the cost panels say \"requires the billing export\" and no billing table is queried. When true, set observability_azure_billing_export_source."
   type        = bool
   default     = false
 }
 
-variable "azure_billing_export_source" {
+variable "observability_azure_billing_export_source" {
   description = "KQL table expression holding the Azure Cost Management export (actual cost, daily), as queried from Application Insights, for example workspace(\"<workspace resource ID>\").AzureCostExport_CL. Expected columns: cost_allocation.kql."
-  type        = string
-  default     = ""
-}
-
-variable "gcp_billing_export_source" {
-  description = "Optional KQL table expression holding the GCP billing export (Vertex AI cost), copied into Log Analytics. Empty: GCP cost is not allocated. Expected columns: cost_allocation.kql."
-  type        = string
-  default     = ""
-}
-
-variable "billing_resource_ids" {
-  description = "Azure resource IDs whose cost is allocated to features: this environment's Azure OpenAI and Speech accounts."
-  type        = list(string)
-  default     = []
-}
-
-variable "speech_resource_id" {
-  description = "Resource ID of this environment's Azure Speech account: its batch meters are allocated to recording hearings (recording_cost_by_hearing.kql)."
   type        = string
   default     = ""
 
   validation {
-    condition     = !var.billing_export_configured || (trimspace(var.azure_billing_export_source) != "" && length(var.billing_resource_ids) > 0 && trimspace(var.speech_resource_id) != "")
-    error_message = "billing_export_configured: set azure_billing_export_source, billing_resource_ids and speech_resource_id (see cost_allocation.kql)."
+    condition     = !var.observability_billing_export_configured || trimspace(var.observability_azure_billing_export_source) != ""
+    error_message = "observability_billing_export_configured: set observability_azure_billing_export_source (see cost_allocation.kql)."
   }
+}
+
+variable "observability_gcp_billing_export_source" {
+  description = "Optional KQL table expression holding the GCP billing export (Vertex AI cost), copied into Log Analytics. Empty: GCP cost is not allocated. Expected columns: cost_allocation.kql."
+  type        = string
+  default     = ""
 }

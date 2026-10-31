@@ -1,18 +1,18 @@
 // Azure Speech's daily batch cost, allocated to recording hearings by usage share
-// (OBS-5). AI usage: cost. Shown only when billing_export_configured = true. The split
+// (OBS-5). AI usage: cost. Shown only when observability_billing_export_configured = true. The split
 // by feature, for both areas and every AI service, is cost_allocation.kql.
 //
 // ============================== PLACEHOLDER: BILLING EXPORT ==============================
 // The source is the Azure Cost Management export that PlatOps is expected to provide.
 // It does not exist yet. Terraform replaces the two tokens below when
-// billing_export_configured = true:
-//   BILLING_EXPORT_TABLE  <- var.azure_billing_export_source: a KQL table expression for
+// observability_billing_export_configured = true:
+//   BILLING_EXPORT_TABLE  <- var.observability_azure_billing_export_source: a KQL table expression for
 //                            the export, e.g. workspace("<workspace>").AzureCostExport_CL
-//   SPEECH_RESOURCE_ID    <- var.speech_resource_id: the Azure Speech account of this
+//   SPEECH_RESOURCE_ID    <- the Speech account (observability.tf): the Azure Speech account of this
 //                            environment (ai-services.tf).
 // Expected columns (Cost Management "actual cost" export, one row per meter per
 // resource per day). If the export names them differently (a custom log table adds
-// _s, _d, _t suffixes), rename them in azure_billing_export_source with `| project-rename`:
+// _s, _d, _t suffixes), rename them in observability_azure_billing_export_source with `| project-rename`:
 //   Date                   datetime  the usage day (UTC)
 //   ResourceId             string    the Azure resource ID (case-insensitive)
 //   CostInBillingCurrency  real      the actual cost of that meter that day

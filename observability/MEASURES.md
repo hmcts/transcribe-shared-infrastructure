@@ -19,7 +19,7 @@ validation procedure is in [VALIDATION.md](VALIDATION.md).
   an environment, query its resource. No query splits by environment.
 - **The time range comes from the caller** (a workbook, an alert window, or Logs). The files take
   no parameters, except the cost queries' placeholders.
-- **Workbooks** (`workbooks.tf`): service health, dictation, recording, workload and AI usage, one
+- **Workbooks** (`observability-workbooks.tf` in the repository root): service health, dictation, recording, workload and AI usage, one
   set per environment. Each panel is one of these files, sometimes with a `project` for its chart.
   Until they are created (PlatOps must allow the resource type), run the files in Logs.
 - **Services** (`cloud_RoleName`): `transcribe-api` (the API pods), `transcribe-api-worker` (the
@@ -171,7 +171,7 @@ show a note instead.
 
 ## Access
 
-This module grants nothing. To read the data, a person needs Reader (or Monitoring Reader) on the
+The Terraform grants nothing. To read the data, a person needs Reader (or Monitoring Reader) on the
 environment's Application Insights resource or its resource group; Workbook Reader alone opens a
 workbook but not the data. Who gets which role in which environment is a PlatOps decision. Whether
 Dynatrace reads this telemetry (through an Azure Monitor integration or an OpenTelemetry export) is

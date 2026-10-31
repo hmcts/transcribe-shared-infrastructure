@@ -4,7 +4,7 @@
 //   min_baseline_tokens, whichever is larger), by hmcts.ai.feature (minutes, titles,
 //   documents, recording post-processing: whatever ai_feature() each call site names).
 //   Source: gen_ai.client.token.usage, all models, input and output. Usage, never cost.
-// Fires when spike_ratio > alert_thresholds.ai_usage_spike_factor (3).
+// Fires when spike_ratio > observability_alert_thresholds.ai_usage_spike_ratio (3).
 // Previous day, not 7 days: a log alert reads at most 2 days. The 7-day view is
 //   ai_usage_trend.kql.
 // Parameter (prepended by Terraform as a let): min_baseline_tokens. To run in Logs over

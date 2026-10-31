@@ -8,7 +8,7 @@
 //   operation and code. Both keep hmcts.area == "recording" (journey type prefix as
 //   fallback): dictation's upload stage also emits upload.failed with
 //   storage.write_failed.
-// Fires when failures > alert_thresholds.storage_failures (0).
+// Fires when failures > observability_alert_thresholds.storage_failures (0).
 // Output (AC3): the operation, the code and a count.
 union
     (customEvents

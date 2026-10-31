@@ -40,7 +40,7 @@ jobs:
         run: python3 -m unittest discover -s observability/tests
 
   terraform:
-    name: Terraform module tests
+    name: Terraform tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,13 +49,11 @@ jobs:
         with:
           terraform_version: "1.13.4"
 
-      # The module and the root that instantiates it.
+      # The root, with the observability resources, and the test harness.
       - name: Format
         run: terraform fmt -check -recursive
 
-      # Workbooks, alert rules and availability tests, planned against a mock provider
-      # (tests/observability.tftest.hcl): no Azure access.
+      # The root's observability-*.tf planned against a mock provider, with a harness in
+      # place of observability.tf (tests/run-terraform-tests.sh): no Azure access.
       - name: Test
-        run: |
-          terraform -chdir=observability init -backend=false -input=false
-          terraform -chdir=observability test
+        run: observability/tests/run-terraform-tests.sh

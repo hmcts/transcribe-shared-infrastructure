@@ -15,7 +15,7 @@ The procedure has five parts: the automated scan on every build, preparation, th
 for each area, the deployed sample scan, then evidence and sign-off.
 
 > **What is not deployed yet.** The workbooks, alert rules and availability tests are defined in
-> this module, but PlatOps must first allow those resource types, and alerts are off. Until then,
+> the repository root (`observability-*.tf`), but PlatOps must first allow those resource types, and alerts are off. Until then,
 > check each panel by running its query file in Logs, and check each alert by running its
 > `kql/alert_*.kql` file over the scenario's window. Alert delivery is tested once the rules exist, with the controlled tests
 > in [ALERTS.md](ALERTS.md#controlled-tests-ac2).
