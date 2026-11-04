@@ -26,7 +26,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.15"
 
       # Every name a query uses is in telemetry-names.txt; area queries filter on their
       # area; alert queries output only safe columns (DIAAT-284, DIAAT-285, DIAAT-205).
