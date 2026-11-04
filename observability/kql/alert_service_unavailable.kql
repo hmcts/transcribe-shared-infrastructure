@@ -6,7 +6,7 @@
 //   and synthetic traffic excluded.
 // Area: hmcts.area as transcribe-api sets it (empty: shared paths and transcribe-web),
 //   so a failing area is visible even when the other is busy.
-// Fires when availability_pct < the threshold (alert_thresholds.endpoint_availability_pct).
+// Fires when availability_pct < the threshold (observability_alert_thresholds.endpoint_availability_pct).
 // Parameter (prepended by Terraform as a let): min_requests, so one failed request out
 //   of two at night does not page anyone. Quiet periods are covered by the web tests.
 // Output (AC3): the service name, the area, a count and a percentage. Nothing else.

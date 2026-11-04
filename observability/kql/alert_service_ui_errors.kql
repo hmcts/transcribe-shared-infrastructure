@@ -1,0 +1,21 @@
+// Alert query (DIAAT-285): client-side errors in transcribe-web in the alert window, by
+// error type and where it was caught. Used by the "ui-errors" alert (measure: failures).
+//
+// Source (browser, DIAAT-205, replacing browser Sentry; transcribe-web
+// lib/browser-failures.ts, relayed by transcribe-api's POST /api/telemetry): "ui.error",
+// from the error page (ui.error_source "render", with the Next.js digest that links it
+// to the server error) and the window's handlers ("window_error",
+// "unhandled_rejection"). ui.error_type is the error's class name (TypeError,
+// ChunkLoadError), never its message or stack.
+// Area: both. Pages of both areas send it and relayed browser events carry no area.
+// Caveats: each page sends one event per type, source and route a minute, and at most
+// 20, so a tight error loop counts as a few events, not thousands. A lower bound: a
+// page that crashes before its batch is sent loses it. ChunkLoadError after a release
+// (an old page asking for removed scripts) is expected for a few minutes.
+// Output (AC3): error_type, source (ui.error_source) and a count. No route or digest.
+customEvents
+| where name == "ui.error"
+| extend error_type = tostring(customDimensions["ui.error_type"]),
+    source = tostring(customDimensions["ui.error_source"])
+| summarize failures = sum(itemCount) by error_type, source
+| project error_type, source, failures

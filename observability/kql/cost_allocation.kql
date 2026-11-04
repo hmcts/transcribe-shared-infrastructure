@@ -3,7 +3,7 @@
 // NOT RUNNABLE AS IS. Usage telemetry has no prices; cost is the actual cost from the
 // Azure (and GCP) billing exports, split by each feature's share of that day's usage.
 // The exports do not exist yet (PlatOps). Until they do, the workbook shows a note saying
-// so instead of this query (billing_export_configured = false). When it is true, the
+// so instead of this query (observability_billing_export_configured = false). When it is true, the
 // workbook's Terraform fills in the placeholders below and defines usage_share() as
 // ai_usage_share_daily.kql. To run it by hand, do the same:
 //   let usage_share = () { <ai_usage_share_daily.kql> };  (first line), and replace:
@@ -11,12 +11,12 @@
 // PLACEHOLDERS (all upper case, replaced by the workbook's Terraform):
 //   AZURE_BILLING_EXPORT  - the table holding the Azure Cost Management export, e.g.
 //                           workspace("<workspace resource ID>").AzureCostExport_CL
-//                           (var.azure_billing_export_source).
+//                           (var.observability_azure_billing_export_source).
 //   GCP_BILLING_EXPORT    - the table holding the GCP billing export, or nothing
 //                           (var.gcp_billing_export_source; empty: an empty table).
 //   BILLING_RESOURCE_IDS  - JSON list of the Azure resource IDs whose cost is allocated:
 //                           the Azure OpenAI / AI Foundry (GPT-4o, Grok) and Speech
-//                           resources of this environment (var.billing_resource_ids).
+//                           resources of this environment (observability.tf).
 //
 // Expected columns, Azure: the Cost Management export "Cost and usage details (actual
 // cost)", daily, landed in Log Analytics by PlatOps:
