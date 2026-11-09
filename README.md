@@ -184,7 +184,8 @@ PR -> develop -> demo (demo.tfvars) -> Promote to master -> master (AAT, then pr
   GitHub Actions push to it.
 - **`master`** moves only through the **Promote to master** workflow (Actions,
   run manually with an optional commit, default `develop`). It fast-forwards
-  master to a commit that is already on `demo` and descends from master; the
+  master to a commit that is on `demo`, has a successful Jenkins `demo` build
+  and descends from master; the
   Jenkins master build then applies AAT and prod and force-syncs `ithc` and
   `perftest`.
 

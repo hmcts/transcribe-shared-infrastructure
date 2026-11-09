@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  statuses: read
 
 concurrency:
   group: promote-to-master
@@ -27,10 +28,15 @@ jobs:
       - name: Fast-forward master
         env:
           REF: ${{ inputs.ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if ! sha=$(git rev-parse --verify --quiet "origin/${REF}^{commit}" || git rev-parse --verify --quiet "${REF}^{commit}"); then
             echo "::error::Cannot resolve '${REF}' to a commit."
             exit 1
+          fi
+          if [ "$(git rev-parse origin/master)" = "$sha" ]; then
+            echo "master is already at $sha."
+            exit 0
           fi
           if ! git merge-base --is-ancestor "$sha" origin/develop; then
             echo "::error::$sha is not on develop."
@@ -41,13 +47,16 @@ jobs:
             echo "::error::$sha is not on demo yet; wait for 'Sync demo with develop' and the demo Jenkins build."
             exit 1
           fi
+          # Jenkins reports branch builds as this status context; the demo job's URL ends in /job/demo/<n>/.
+          demo_build=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/statuses?per_page=100" \
+            --jq '[.[] | select(.context == "continuous-integration/jenkins/branch" and (.target_url | test("/job/demo/")))][0] // empty | "\(.state) \(.target_url)"')
+          if [ "${demo_build%% *}" != "success" ]; then
+            echo "::error::No successful Jenkins demo build of $sha (latest: ${demo_build:-none}). Promote a commit that demo has built and applied."
+            exit 1
+          fi
           if ! git merge-base --is-ancestor origin/master "$sha"; then
             echo "::error::$sha is not a descendant of master ($(git rev-parse origin/master)); master cannot be fast-forwarded to it."
             exit 1
-          fi
-          if [ "$(git rev-parse origin/master)" = "$sha" ]; then
-            echo "master is already at $sha."
-            exit 0
           fi
           git push origin "$sha:refs/heads/master"
           echo "Promoted master to $sha." >> "$GITHUB_STEP_SUMMARY"
