@@ -1,0 +1,36 @@
+name: Sync demo with develop
+
+# Jenkins' demo branch build applies demo.tfvars, so demo tracks develop rather than master.
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-demo
+  cancel-in-progress: false
+
+jobs:
+  fast-forward:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Fast-forward demo to develop
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          if git merge-base --is-ancestor "$SHA" origin/demo; then
+            echo "demo already contains $SHA."
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor origin/demo "$SHA"; then
+            echo "::error::demo ($(git rev-parse origin/demo)) is not an ancestor of develop ($SHA); refusing to rewrite demo."
+            exit 1
+          fi
+          git push origin "$SHA:refs/heads/demo"

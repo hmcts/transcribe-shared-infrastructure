@@ -9,7 +9,7 @@ on:
       - "observability/**"
       - ".github/workflows/observability.yml"
   push:
-    branches: [master]
+    branches: [develop, master]
     paths:
       - "observability/**"
       - ".github/workflows/observability.yml"

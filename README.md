@@ -2,8 +2,8 @@
 
 Product-level Azure infrastructure for the **transcribe** product, deployed by
 the HMCTS CNP common pipeline (`withInfraPipeline`). Terraform lives at the
-repository root, and each long-lived environment has its own branch kept in
-step with `master`.
+repository root, and each long-lived environment is deployed from its own
+branch (see [Branching and promotion](#branching-and-promotion)).
 
 This is the middle of the three CNP infrastructure tiers:
 
@@ -168,3 +168,26 @@ and the Speech account's own system-assigned identity:
 The pipeline runs Terraform per environment; `env`, `product` and
 `subscription` are injected as `-var` at runtime and must never be set in the
 `.tfvars` files.
+
+## Branching and promotion
+
+```
+PR -> develop -> demo (demo.tfvars) -> Promote to master -> master (AAT, then prod)
+```
+
+- **`develop`** is the default branch; every PR targets it. A PR build only
+  plans: against AAT, and against prod unless the PR has the
+  `not-plan-on-prod` label.
+- **`demo`** is fast-forwarded to `develop` on every push by
+  `.github/workflows/sync-demo.yml`, and Jenkins' `demo` build applies
+  `demo.tfvars`. Master builds no longer sync it, and its ruleset lets only
+  GitHub Actions push to it.
+- **`master`** moves only through the **Promote to master** workflow (Actions,
+  run manually with an optional commit, default `develop`). It fast-forwards
+  master to a commit that is already on `demo` and descends from master; the
+  Jenkins master build then applies AAT and prod and force-syncs `ithc` and
+  `perftest`.
+
+If the sync fails because `demo` is not an ancestor of `develop`, `demo` was
+moved outside this flow; a repository admin has to reset it to a commit on
+`develop`.

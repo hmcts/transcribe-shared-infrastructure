@@ -1,0 +1,53 @@
+name: Promote to master
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit SHA or ref on develop to promote (default is develop's HEAD)
+        required: false
+        default: develop
+
+permissions:
+  contents: write
+
+concurrency:
+  group: promote-to-master
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Fast-forward master
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          if ! sha=$(git rev-parse --verify --quiet "origin/${REF}^{commit}" || git rev-parse --verify --quiet "${REF}^{commit}"); then
+            echo "::error::Cannot resolve '${REF}' to a commit."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$sha" origin/develop; then
+            echo "::error::$sha is not on develop."
+            exit 1
+          fi
+          # demo-first: master only receives what Jenkins has already applied to demo.
+          if ! git merge-base --is-ancestor "$sha" origin/demo; then
+            echo "::error::$sha is not on demo yet; wait for 'Sync demo with develop' and the demo Jenkins build."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor origin/master "$sha"; then
+            echo "::error::$sha is not a descendant of master ($(git rev-parse origin/master)); master cannot be fast-forwarded to it."
+            exit 1
+          fi
+          if [ "$(git rev-parse origin/master)" = "$sha" ]; then
+            echo "master is already at $sha."
+            exit 0
+          fi
+          git push origin "$sha:refs/heads/master"
+          echo "Promoted master to $sha." >> "$GITHUB_STEP_SUMMARY"
