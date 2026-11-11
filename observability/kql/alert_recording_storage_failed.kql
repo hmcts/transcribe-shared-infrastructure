@@ -10,17 +10,13 @@
 //   storage.write_failed.
 // Fires when failures > observability_alert_thresholds.storage_failures (0).
 // Output (AC3): the operation, the code and a count.
-union
-    (customEvents
-    | where name == "job.storage_failed"
-    | extend
-        operation = tostring(customDimensions["storage.operation"]),
-        error_code = tostring(customDimensions["hmcts.error.code"])),
-    (customEvents
-    | where name == "upload.failed"
-    | extend error_code = tostring(customDimensions["hmcts.error.code"])
-    | where error_code == "storage.write_failed"
-    | extend operation = "upload.blob_write")
+// One scan, no union: a log alert rule does not accept a local union.
+customEvents
+| where name in ("job.storage_failed", "upload.failed")
+| extend error_code = tostring(customDimensions["hmcts.error.code"])
+| where name == "job.storage_failed" or error_code == "storage.write_failed"
+| extend operation = iff(name == "job.storage_failed",
+    tostring(customDimensions["storage.operation"]), "upload.blob_write")
 | extend area = coalesce(tostring(customDimensions["hmcts.area"]),
     tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]))
 | where area == "recording"

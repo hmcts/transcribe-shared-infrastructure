@@ -13,16 +13,15 @@
 // Parameter (prepended by Terraform as a let): min_baseline_hours. To run in Logs over
 //   the last 2 days: prepend `let min_baseline_hours = 1;`.
 // Output (AC3): the feature (a controlled code), hours and the ratio.
-let metered = customMetrics
-    | where name == "hmcts.speech.audio.duration"
-    | extend feature = tostring(customDimensions["hmcts.ai.feature"]);
-let dictation = customMetrics
-    | where name == "hmcts.event.duration"
-    | where tostring(customDimensions["event"]) == "speech.session_stopped"
-        and tostring(customDimensions["source"]) == "browser"
-    | extend feature = "dictation";
-union metered, dictation
+// One scan, no union: a log alert rule does not accept a local union.
+customMetrics
 | where timestamp > ago(2d)
+| where name == "hmcts.speech.audio.duration"
+    or (name == "hmcts.event.duration"
+        and tostring(customDimensions["event"]) == "speech.session_stopped"
+        and tostring(customDimensions["source"]) == "browser")
+| extend feature = iff(name == "hmcts.event.duration", "dictation",
+    tostring(customDimensions["hmcts.ai.feature"]))
 | summarize
     audio_hours = sumif(valueSum, timestamp > ago(1d)) / 3600.0,
     baseline_hours = sumif(valueSum, timestamp <= ago(1d)) / 3600.0
