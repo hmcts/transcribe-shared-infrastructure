@@ -89,6 +89,19 @@ class AlertOutputCheck(unittest.TestCase):
         hidden = SAFE.replace("| summarize", '| extend source = tostring(column_ifexists("details", ""))\n| summarize')
         self.assert_rejected(hidden, "column_ifexists")
 
+    def test_a_client_error_alert_may_not_read_its_route_or_digest(self) -> None:
+        # ui.error's type and source are safe; page.route and the Next.js digest are not
+        # vetted as alert values (DIAAT-205).
+        base = (Path(checker.KQL_DIR) / "alert_service_ui_errors.kql").read_text(encoding="utf-8")
+        self.assertEqual(checker.alert_problems(base), [])
+        for key in ("page.route", "next.error.digest"):
+            with self.subTest(key):
+                text = base.replace(
+                    "| summarize",
+                    f'| extend route = tostring(customDimensions["{key}"])\n| summarize',
+                )
+                self.assert_rejected(text, f"customDimensions['{key}'], not in SAFE_ALERT_ATTRIBUTES")
+
     def test_check_applies_the_alert_rules_only_to_alert_files(self) -> None:
         unsafe = SAFE.replace("| project error_code, failures", "| project error_code, failures, url")
         with tempfile.TemporaryDirectory() as tmp:

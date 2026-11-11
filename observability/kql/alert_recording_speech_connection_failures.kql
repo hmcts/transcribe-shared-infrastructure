@@ -8,7 +8,7 @@
 // Source: counter transcription.speech.call.failures (DIAAT-282), emitted only by the
 //   recording batch client, so no area filter: metric dimensions do not carry
 //   hmcts.area (decision 1).
-// Fires when failures > alert_thresholds.speech_connection_failures.
+// Fires when failures > observability_alert_thresholds.speech_connection_failures.
 // Output (AC3): the code and a count.
 customMetrics
 | where name == "transcription.speech.call.failures"
