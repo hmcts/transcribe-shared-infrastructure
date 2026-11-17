@@ -87,6 +87,26 @@ resource "azurerm_private_endpoint" "speech" {
   }
 }
 
+module "log_analytics_workspace" {
+  source      = "git@github.com:hmcts/terraform-module-log-analytics-workspace-id?ref=master"
+  environment = var.env
+}
+
+# Speech's metrics carry no HTTP status codes; its RequestResponse logs do.
+resource "azurerm_monitor_diagnostic_setting" "speech" {
+  name                       = "${var.product}-speech-${var.env}"
+  target_resource_id         = module.speech_services.cognitive_account_id
+  log_analytics_workspace_id = module.log_analytics_workspace.workspace_id
+
+  enabled_log {
+    category_group = "allLogs"
+  }
+
+  enabled_metric {
+    category = "AllMetrics"
+  }
+}
+
 # Data-plane access for the product's managed identity — the identity the AKS
 # workload runs as. Control-plane roles do not cover token issuance, so without
 # this the pod authenticates and is then refused by Speech itself.

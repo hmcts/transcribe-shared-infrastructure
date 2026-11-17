@@ -72,6 +72,8 @@ Built here by `terraform-module-ai-services`, the platform's approved module for
 cognitive accounts (globally whitelisted; the bare `azurerm_cognitive_account`
 is not). The one approval this repo needs is for `azurerm_role_assignment`
 (cnp-jenkins-config#1349), for the data-plane grant below.
+`azurerm_monitor_diagnostic_setting` and the workspace-lookup module are
+approved for this repo in cnp-jenkins-config#1391.
 
 **No API keys exist.** `cognitive_account_local_auth_enabled = false`, so Speech
 issues no key at all. The API authenticates as the product managed identity and
@@ -103,6 +105,14 @@ server-side, over the private endpoint.
 because batch transcription fetches its audio from there. With an empty list,
 job submission fails with 403 "No permission to access this outbound
 connection".
+
+**Diagnostic logs.** A diagnostic setting sends all of the account's logs
+(`allLogs`: Audit, RequestResponse, Trace) and `AllMetrics` to the
+environment's central Log Analytics workspace (`hmcts-nonprod` or `hmcts-prod`,
+resolved by `terraform-module-log-analytics-workspace-id`, the same workspace
+Application Insights and the Key Vault's audit logs use). Speech's metrics have
+no HTTP status codes, so the `RequestResponse` logs are where a 401 or 403 shows
+up. They land in the `AzureDiagnostics` table.
 
 We comply rather than take a policy exception. Both apps this product replaces
 run their Speech accounts as named `notScopes` exceptions in
