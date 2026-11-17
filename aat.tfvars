@@ -5,3 +5,18 @@ entra_client_secret_source = {
   key_vault_name      = "central-app-reg-kv"
   secret_name         = "benchnotes-aat-secret"
 }
+
+# DIAAT-205: alert rules on in AAT to test them before prod. Personal mailboxes for
+# the trial only; swap for a team mailbox (or a Key Vault webhook) once PlatOps
+# confirm the route.
+observability_alerts_enabled = true
+observability_service_alert_emails = [
+  "saad.shaukat@hmcts.net",
+  "Hamza.Ahmed@justice.gov.uk",
+  "christopher.john@Justice.gov.uk",
+]
+observability_security_alert_emails = [
+  "saad.shaukat@hmcts.net",
+  "Hamza.Ahmed@justice.gov.uk",
+  "christopher.john@Justice.gov.uk",
+]
