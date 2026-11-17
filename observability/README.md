@@ -1,6 +1,7 @@
-# Observability queries (DIAAT-205)
+# Observability (DIAAT-205)
 
-The KQL behind the transcribe product's workbooks and alerts, for both areas of the
+The workbooks, alerts and availability tests of the transcribe product, and the KQL behind
+them, for both areas of the
 merged service: **dictation** (live dictation, uploads, minutes and documents) and
 **recording** (hearing recordings transcribed by Azure Speech batch jobs). It merges
 the two heritage modules (courtstranscribe and batch-audio-transcription-infra).
@@ -24,7 +25,21 @@ new queries should still `sum(itemCount)`.
 | `ALERTS.md`, `MEASURES.md`, `VALIDATION.md` | the alerts and runbooks, the measures, and the DIAAT-287 validation |
 | `validation/*.kql` | DIAAT-287 checks, run by hand, not panels |
 | `telemetry-names.txt` | every name the KQL may use, generated from transcribe-api |
-| `tests/` | the name and area check, and its tests |
+| `tests/` | the name and area check, and its tests; the Terraform tests (`observability.tftest.hcl`, `harness/`, `run-terraform-tests.sh`) |
+
+The Terraform is in the repository root, one set per environment:
+
+| Root file | What |
+|---|---|
+| `observability-workbooks.tf` | the five views: service health, dictation, recording, workload, AI usage |
+| `observability-alerts.tf` | the alert rules and action groups (off: `observability_alerts_enabled`) |
+| `observability-availability-tests.tf` | standard availability tests, one per URL in `observability_availability_test_urls` |
+| `observability-variables.tf` | their inputs: switches, receivers, thresholds, billing export |
+| `observability.tf` | their only link to the rest of the root (App Insights, resource group, AI accounts) |
+
+They are root files, not a local module, so the CNP Terraform allow-list checks each resource
+type: `terraform-infra-approvals/transcribe-shared-infrastructure.json` in cnp-jenkins-config must
+list the workbook, standard web test and scheduled query rule types.
 
 ## Services (`cloud_RoleName`)
 
@@ -88,7 +103,11 @@ browser's rejected file is `upload.file_rejected` (decision 3).
 ```bash
 python3 observability/tests/check_kql_names.py
 python3 -m unittest discover -s observability/tests
+observability/tests/run-terraform-tests.sh
 ```
+
+The Terraform tests plan the root's `observability-*.tf` against a mock provider, with
+`tests/harness/` in place of `observability.tf`: no Azure access or git modules are needed.
 
 After transcribe-api's telemetry changes, regenerate the names from a checkout of its
 master and commit them with any KQL change:

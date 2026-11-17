@@ -6,7 +6,7 @@
 //   Every replica of transcribe-api-worker runs its own loop over the same table, so
 //   the queue stops only when all of them have stalled (or every poll fails, e.g. the
 //   database is down).
-// Fires when last_success_age_s > alert_thresholds.poller_stalled_seconds.
+// Fires when last_success_age_s > observability_alert_thresholds.poller_stalled_seconds.
 // Source: DIAAT-277 gauge, exported every 60 s per replica; polls every
 //   BATCH_POLL_INTERVAL_SECONDS (30 s). Recording-only metric, so no area filter:
 //   metric dimensions do not carry hmcts.area (decision 1). No points means no alert

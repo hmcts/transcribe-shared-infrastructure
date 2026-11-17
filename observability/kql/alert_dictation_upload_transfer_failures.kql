@@ -1,0 +1,25 @@
+// Alert query (DIAAT-285): dictation audio files the browser could not send to storage
+// in the alert window, by code. Used by the "upload-transfer-failures" alert (measure:
+// failures).
+//
+// Source (browser, DIAAT-205; transcribe-web components/audio/upload/use-audio-upload.ts,
+// relayed by transcribe-api's POST /api/telemetry): "upload.transfer_failed", sent once
+// per file after its retries are used up. hmcts.error.code: upload.network,
+// upload.timeout, upload.url_unavailable (no upload URL from the API) or http.<status>
+// (storage refused the PUT). The file never reached storage, so no job exists and
+// job.finished never sees it.
+// Area: dictation only (DIAAT-205, decision 1). Only the dictation upload page sends this
+// event, and relayed browser events carry neither hmcts.area nor, here, a journey, so an
+// event with neither counts as dictation; one stamped with another area is left out.
+// Caveats: a browser that closes before its batch is sent loses the event (a lower
+// bound). Recording uploads go through the API and fail as upload.failed instead
+// (alert_recording_upload_failures.kql).
+// Output: error_code (hmcts.error.code), failures (files not sent).
+customEvents
+| where name == "upload.transfer_failed"
+| extend area = coalesce(tostring(customDimensions["hmcts.area"]),
+    tostring(split(tostring(customDimensions["hmcts.journey.type"]), ".")[0]), "dictation")
+| where area == "dictation"
+| extend error_code = tostring(customDimensions["hmcts.error.code"])
+| summarize failures = sum(itemCount) by error_code
+| project error_code, failures

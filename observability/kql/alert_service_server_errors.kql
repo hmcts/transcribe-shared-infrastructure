@@ -3,7 +3,7 @@
 // Measure: server_error_pct per service and area over the window, with the formula and
 //   exclusions of service_server_error_rate.kql (probes and synthetic traffic excluded,
 //   4xx not errors). Area: hmcts.area as transcribe-api sets it.
-// Fires when server_error_pct > alert_thresholds.server_error_pct.
+// Fires when server_error_pct > observability_alert_thresholds.server_error_pct.
 // Parameter (prepended by Terraform as a let): min_requests. To run in Logs: prepend
 //   `let min_requests = 20;`.
 // Output (AC3): the service name, the area, a count and a percentage.

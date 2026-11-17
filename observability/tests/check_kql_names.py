@@ -87,6 +87,8 @@ SAFE_ALERT_COLUMNS = {
     # codes, sources, states and enums:
     "error_code", "source", "outcome", "state", "operation", "resource_type", "action",
     "feature", "area",
+    # a client-side error's class name (transcribe-api pattern [A-Za-z][A-Za-z0-9_.]{0,63}):
+    "error_type",
     # what failed (system names, never people or records):
     "cloud_RoleName", "dependency",
 }
@@ -103,6 +105,8 @@ SAFE_ALERT_ATTRIBUTES = {
     "event", "source",
     # Dictation: controlled values (enums, Speech SDK code names), never content.
     "live_draft.failure_kind", "speech.cancel_reason", "speech.error_code",
+    # Client-side errors: the class name (pattern-checked by the API) and an enum.
+    "ui.error_type", "ui.error_source",
 }
 # App Insights columns that can hold free text, people or content.
 CONTENT_COLUMNS = {

@@ -9,7 +9,7 @@
 //   failed check could fill a short window), and its failures have their own alerts
 //   (alert_recording_speech_*.kql, alert_dictation_speech_*.kql); its health is on the
 //   dashboard (service_dependency_up.kql).
-// Fires when up < 1. The window is alert_thresholds.dependency_down_minutes.
+// Fires when up < 1. The window is observability_alert_thresholds.dependency_down_minutes.
 // Source: the DIAAT-277 background checker in the API process (transcribe-api). No
 //   points (the API is down, or the checker is not running) means no alert here: the
 //   service-unavailable alert and the web tests cover that.

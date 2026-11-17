@@ -5,7 +5,7 @@
 //   (0 when nothing waits). Max across replicas, never sum. Exported by
 //   transcribe-api-worker; recording-only metric, so no area filter: metric dimensions
 //   do not carry hmcts.area (decision 1).
-// Fires when oldest_waiting_min > alert_thresholds.oldest_waiting_minutes. Set below
+// Fires when oldest_waiting_min > observability_alert_thresholds.oldest_waiting_minutes. Set below
 //   JOB_STUCK_WAITING_SECONDS (30 min) so it warns before jobs are reported stuck.
 // Output (AC3): one number of minutes.
 customMetrics

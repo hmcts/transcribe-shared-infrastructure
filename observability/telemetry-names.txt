@@ -1,9 +1,8 @@
 # Telemetry names the KQL in ./kql and ./validation may use: <kind> <name>. GENERATED, do not edit.
-# Source: transcribe-api @ ab73a2c (telemetry-contract.json, hmcts-otel conventions and
+# Source: transcribe-api @ 3dbe07c (telemetry-contract.json, hmcts-otel conventions and
 # src/transcribe_api). Regenerate: tests/generate_telemetry_names.py --app-repo <path>.
 # Checked by tests/check_kql_names.py.
 event audit.write_failed
-event auth.token_refresh_failed
 event dependency.health_changed
 event dictation.no_speech_warning
 event dictation.paused
@@ -119,6 +118,7 @@ event transcription.cancelled
 event transcription.completed
 event transcription.failed
 event transcription.started
+event ui.error
 event upload.cancelled
 event upload.completed
 event upload.failed
@@ -127,6 +127,7 @@ event upload.file_selected
 event upload.rejected
 event upload.started
 event upload.transcription_started
+event upload.transfer_failed
 event upload.url_issued
 event upload.validation_failed
 event webhook.delivered
@@ -216,6 +217,7 @@ attribute minutes.citation_index
 attribute minutes.content_length
 attribute minutes.rating
 attribute minutes.template
+attribute next.error.digest
 attribute onboarding.step
 attribute onboarding.step_name
 attribute page.route
@@ -245,6 +247,8 @@ attribute transcript.postprocess_step
 attribute transcript.segment_count
 attribute transcript.speaker_count
 attribute transcript.update_type
+attribute ui.error_source
+attribute ui.error_type
 attribute upload.file_count
 attribute upload.method
 attribute upload.retry_attempt
