@@ -7,3 +7,18 @@ entra_client_secret_source = {
 }
 
 alert_limit_reached = true
+
+# DIAAT-205: alert rules on in demo, as in AAT. Personal mailboxes for the trial
+# only; swap for a team mailbox (or a Key Vault webhook) once PlatOps confirm the
+# route.
+observability_alerts_enabled = true
+observability_service_alert_emails = [
+  "saad.shaukat@hmcts.net",
+  "Hamza.Ahmed@justice.gov.uk",
+  "christopher.john@Justice.gov.uk",
+]
+observability_security_alert_emails = [
+  "saad.shaukat@hmcts.net",
+  "Hamza.Ahmed@justice.gov.uk",
+  "christopher.john@Justice.gov.uk",
+]
